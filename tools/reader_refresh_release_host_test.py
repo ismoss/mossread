@@ -93,6 +93,7 @@ static enum EpdDrawError update_display_area_with(void *hl,const int *wave,int m
 #define update_display_mode_diff(...) push(17)
 #define display_main_normal_waveform() (&E0470_WAVEFORM)
 #define update_display_water_turn(...) push(18)
+#define update_display_water_turn_hd(...) push(28)
 #define E0470_TURN_RTL 0
 static enum EpdDrawError update_display_text_turn(void *hl,EpdRect area,int dir) {
  (void)hl;(void)dir;assert(tick==2);return push_area(20,&E0470_FULL_WAVEFORM,MODE_DU,area);

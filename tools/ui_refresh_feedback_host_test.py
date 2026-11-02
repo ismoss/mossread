@@ -172,6 +172,7 @@ static enum EpdDrawError update_display_full(void *hl){(void)hl;return record(FU
 static enum EpdDrawError update_display_fast_page(void *hl){(void)hl;return record(FAST,MODE_GL16,(EpdRect){0});}
 static enum EpdDrawError update_display_mode_diff(void *hl,enum EpdDrawMode mode){(void)hl;return record(READER,mode,(EpdRect){0});}
 static enum EpdDrawError update_display_water_turn(void *hl,EpdRect area,int dir){(void)hl;(void)dir;assert(test_tick_us==E0470_TURN_FAST_TICK_US);return record(WATER,MODE_GL16,area);}
+static enum EpdDrawError update_display_water_turn_hd(void *hl,EpdRect area,int dir){(void)hl;(void)dir;assert(test_tick_us==E0470_TURN_FAST_TICK_US);return record(WATER,MODE_GL16,area);}
 '''
 shelf += function("main/apps/app_book.c", "paint_control") + "\n"
 for name in ("present", "paint_reading", "reader_turn_chrome", "turn_page"):
