@@ -123,12 +123,22 @@ static bool image_pixels_rot(uint8_t *fb, uint8_t *pixels, const char *path, Epd
     int crop_w = (int)center.width, crop_h = (int)center.height;
     if (radius > 0) avatar_content_crop(gray, width, height, area,
                                         &crop_x, &crop_y, &crop_w, &crop_h);
-    // 旋转路径永远是"整图装进等比例的框"：上面那次居中等比裁切是按未旋转的解码尺寸算的，
-    // 拿它去索引旋转后的图只会越界错位（预览图会莫名其妙偏到右边）。这里强制整图。
-    // The rotated path always places the whole image into an aspect-matched box: the centre-crop
-    // above was computed against the unrotated decode, and indexing the turned image with it lands
-    // out of bounds (that is why the preview drifted to the right). Force the full frame here.
-    if (rotate) { crop_x = 0; crop_y = 0; crop_w = (int)width; crop_h = (int)height; }
+    // 旋转路径：把旋转后的图按 cover 缩放到目标框再居中裁切，任意原图比例都正确。
+    // 旧写法假定解码尺寸恰好等于旋转后的画框；比例不符且解码被等比缩小时会越界钳到最后一列，
+    // 于是出现"右侧 1/4 花屏"（预览框按比例算过所以看不出来）。
+    // Rotated path: scale the turned image to COVER the target and centre-crop, so any source aspect
+    // works. The old code assumed the decode matched the turned frame; on a mismatched aspect with a
+    // down-scaled decode it ran past the end, clamped to the last column and produced a garbage strip.
+    int64_t rot_scale = 0, rot_off_x = 0, rot_off_y = 0;
+    if (rotate) {
+        // 旋转后宽 = height，高 = width。
+        // The turned image is `height` wide and `width` tall.
+        int64_t sx_fp = ((int64_t)area.width << 16) / (int64_t)height;
+        int64_t sy_fp = ((int64_t)area.height << 16) / (int64_t)width;
+        rot_scale = sx_fp > sy_fp ? sx_fp : sy_fp;
+        rot_off_x = ((int64_t)area.width - (((int64_t)height * rot_scale) >> 16)) / 2;
+        rot_off_y = ((int64_t)area.height - (((int64_t)width * rot_scale) >> 16)) / 2;
+    }
 
     for (int y = area.y; y < area.y + area.height; ++y)
         for (int x = area.x; x < area.x + area.width; ++x) {
@@ -136,20 +146,20 @@ static bool image_pixels_rot(uint8_t *fb, uint8_t *pixels, const char *path, Epd
             int dx = x - area.x, dy = y - area.y;
             int source_x, source_y;
             if (rotate) {
-                // 顺时针 90°：源像素 (x,y) 落到 (x'=H-1-y, y'=x)，所以目标 (dx,dy) 取源
-                // (x=dy, y=H-1-dx)。这里 H = 解码高 = area.width，只在"比例已对齐"（整图裁切）
-                // 的路径用，见 ui_wallpaper_fit_pixels。
-                // Clockwise 90°: source (x,y) lands at (x'=H-1-y, y'=x), so destination (dx,dy)
-                // samples (x=dy, y=H-1-dx). H = decoded height = area.width; only used on the
-                // aspect-matched (full-crop) path from ui_wallpaper_fit_pixels.
-                source_x = dy + crop_x;
-                source_y = (int)height - 1 - dx + crop_y;
+                // 顺时针 90°：目标 (dx,dy) 先按 cover 反算旋转图坐标，再映射回源。
+                // Clockwise 90°: map the destination back into the turned image, then into the source.
+                int rx = (int)((((int64_t)dx - rot_off_x) << 16) / rot_scale);
+                int ry = (int)((((int64_t)dy - rot_off_y) << 16) / rot_scale);
+                source_x = ry;
+                source_y = (int)height - 1 - rx;
             } else {
                 source_x = crop_x + (int)((int64_t)dx * crop_w / area.width);
                 source_y = crop_y + (int)((int64_t)dy * crop_h / area.height);
             }
             if (source_x < 0) source_x = 0;
             if (source_x >= (int)width) source_x = (int)width - 1;
+            if (source_y < 0) source_y = 0;
+            if (source_y >= (int)height) source_y = (int)height - 1;
             uint8_t value = gray[(size_t)source_y * width + source_x];
             if (pixels) pixels[(size_t)dy*area.width + dx] = value;
             else epd_draw_pixel(x,y,ui_image_dither_gray(value,x,y),fb);
@@ -225,9 +235,9 @@ void ui_wallpaper_draw_avatar(uint8_t *fb, const uint8_t *pixels, EpdRect area, 
 #define WALL_LOCK_CACHE UI_WALLPAPER_CACHE_PARENT "/locks/wallpaper.bin"
 #define WALL_LOCK_BYTES (684u*1216u/2u)
 #define WALL_LOCK_MAGIC UINT32_C(0x574c4b31)
-// 4：锁屏绘制改为"按画布朝向旋转"，旧缓存是按裁切算的，必须作废。
-// 4: the lock path now rotates to the canvas orientation; old centre-cropped caches must be dropped.
-#define WALL_LOCK_VERSION 4u
+// 5：旋转壁纸改为 cover 缩放，修正旧版右侧 1/4 花屏；旧缓存必须作废。
+// 5: rotated wallpapers now use cover scaling to fix the old garbage strip; drop stale caches.
+#define WALL_LOCK_VERSION 5u
 // 只缓存最终16级抖动画布到卡；借用锁屏画布，不常驻第二份整帧。
 // Persist final 16-level dithered art on SD, borrowing the lock canvas instead of retaining another frame.
 typedef struct {

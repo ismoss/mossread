@@ -34,7 +34,7 @@
 // Old caches may contain temporary badges; the transparent-cover compositing/bounds changed too,
 // so this generation must invalidate the older artwork again. The wallpaper lock now rotates to the
 // canvas orientation, so the old centre-cropped face frames must go too.
-#define ART_MAGIC UINT32_C(0x50414437)
+#define ART_MAGIC UINT32_C(0x50414438)
 typedef struct {uint32_t magic,rotation,style,checksum;uint64_t wallpaper;} art_header_t;
 static uint32_t checksum(const uint8_t *bytes){uint32_t h=2166136261u;for(unsigned i=0;i<FRAME_BYTES;++i)h=(h^bytes[i])*16777619u;return h;}
 static uint64_t wallpaper_key(void){
