@@ -1783,11 +1783,11 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
     snprintf(contrast,sizeof(contrast),"%u%%",app_settings_system_contrast());
     unsigned minutes=app_settings_auto_lock_minutes();
     if(minutes)snprintf(idle,sizeof(idle),"%u 分钟",minutes);else strcpy(idle,"关闭");
-    const char *display_labels[]={"系统字体","系统对比度","主页刷新模式","首页强刷","自动休眠锁屏","双击解锁","关机睡眠","自适应阅读方向"};
+    const char *display_labels[]={"系统字体","系统对比度","主页刷新模式","首页强刷","自动休眠锁屏","双击解锁","关机睡眠","关闭书内图片"};
     const char *display_values[]={font_name,contrast,
         app_settings_main_refresh_mode()==APP_MAIN_REFRESH_FAST?"快刷":app_settings_main_refresh_mode()==APP_MAIN_REFRESH_WATER?"水波纹":"普通",
         app_settings_home_full_refresh()?"开启":"关闭",idle,"",app_settings_staged_shutdown()?"先浅后深":"彻底断电",
-        app_settings_reader_adaptive()?"开启":"关闭"};
+        app_settings_reader_hide_images()?"开启":"关闭"};
     const int display_icons[]={2,7,15,11,14,SETTINGS_UNLOCK_ICON,9,15};
     setting_group(fb,SETTINGS_DISPLAY_Y-49,"显示",SETTINGS_DISPLAY_Y,
                   display_icons,display_labels,display_values,SETTINGS_DISPLAY_ROWS);
@@ -2835,7 +2835,7 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         else if(row==4)s_page=SETTINGS_AUTO_LOCK;
         else if(row==5)app_settings_set_wake_presses(app_settings_wake_presses()==2?1:2);
         else if(row==6)s_page=SETTINGS_POWER_SLEEP;
-        else app_settings_set_reader_adaptive(!app_settings_reader_adaptive());
+        else app_settings_set_reader_hide_images(!app_settings_reader_hide_images());
         return APP_REDRAW_PAGE;
     }
     if(y>=SETTINGS_PERSONAL_Y && y<SETTINGS_PERSONAL_Y+SETTINGS_PERSONAL_ROWS*SETTINGS_ROW_H) {

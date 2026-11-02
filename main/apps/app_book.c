@@ -263,6 +263,9 @@ static struct {
 static unsigned s_cover_pending_mask, s_cover_decode_mask, s_cover_warm_mask;
 static unsigned s_cover_dirty_mask, s_cover_present_mask;
 static int64_t s_cover_warm_after_ms;
+// 相邻页封面预取用的可复用缓冲与节流。/ Reusable buffer and throttle for adjacent-page cover prefetch.
+static uint8_t *s_prefetch_px;
+static int64_t s_prefetch_next_ms;
 static size_t s_shelf_capacity;
 static int s_count, s_visible_count, s_filter;
 static bool s_recent_sort;
@@ -2794,7 +2797,7 @@ static void draw_reading_toggle(uint8_t *fb, int index, const char *title,
     EpdRect row = reading_toggle_rect(index);
     ui_fill_round_rect(fb, row, 20, UI_GRAY_WHITE);
     ui_draw_control_frame(fb, row, 20, 0x68);
-    if (index == 2) {
+    if (index == 2 && detail) {
         // 半宽格放两行：标题与说明各降一号字，开关仍留在右端。
         // A half-width cell carries two lines: title and detail step down a size, the switch stays right.
         ui_text_box(fb,(EpdRect){row.x+20,row.y+10,row.width-40,row.height/2-16},21,title,EPD_DRAW_ALIGN_LEFT,false);
@@ -2824,7 +2827,7 @@ static void draw_reading_settings(uint8_t* fb) {
     draw_reading_toggle(fb, 0, "电源键翻页", NULL, app_settings_reader_power_turn());
     draw_reading_card(fb, 4, "按键控制", "自定义三键", false);
     draw_reading_toggle(fb, 1, "全屏沉浸", NULL, app_settings_reader_immersive());
-    draw_reading_toggle(fb, 2, "关闭书内图片", "跳过正文插图，保留原书文件", app_settings_reader_hide_images());
+    draw_reading_toggle(fb, 2, "自适应阅读方向", NULL, app_settings_reader_adaptive());
     draw_reading_toggle(fb, 3, "竖排（从右到左）", NULL, app_settings_book_vertical());
     EpdRect footer = reader_panel_footer_rect();
     ui_fill_round_rect(fb, footer, 20, UI_GRAY_BLACK);
@@ -6047,6 +6050,12 @@ static app_redraw_t apply_reader_option(app_ctx_t* ctx, int kind) {
         app_settings_set_reader_power_turn(!app_settings_reader_power_turn());
         return APP_REDRAW_PAGE;
     }
+    // 阅读设置这一格现为「自适应阅读方向」（关闭书内图片已移到设置→显示）。
+    // This cell is now the adaptive reading direction; hide-images moved to Settings > Display.
+    if (kind == 2) {
+        app_settings_set_reader_adaptive(!app_settings_reader_adaptive());
+        return APP_REDRAW_PAGE;
+    }
     if (!s_text || kind < 1 || kind > 3) return APP_REDRAW_NONE;
     bool previous = kind == 1 ? app_settings_reader_immersive() :
                     kind == 2 ? app_settings_reader_hide_images() : app_settings_book_vertical();
@@ -8208,6 +8217,36 @@ static app_redraw_t reader_font_recovery_tick(app_ctx_t *ctx) {
     app_restart_host();
     return APP_REDRAW_DONE;
 }
+// 相邻页封面预取：书架多于一页时，空闲里把下一页（或上一页）尚未缓存的封面解码进磁盘缓存，
+// 翻到那一页直接命中；只有一页时不预取，无额外开销。
+// Adjacent-page cover prefetch: with more than one shelf page, decode the next (or previous) page's
+// uncached covers into the disk cache while idle so a page turn hits cache; single page does nothing.
+static void shelf_prefetch_adjacent(app_ctx_t* ctx) {
+    if (s_view != SHELF) return;
+    if (leaves() <= 1) return;
+    if (ctx->touch && ctx->touch->touched) return;
+    if (ctx->now_ms < s_prefetch_next_ms) return;
+    s_prefetch_next_ms = ctx->now_ms + 300;
+    int pages = leaves();
+    int target = (ctx->leaf + 1 < pages) ? ctx->leaf + 1 : (ctx->leaf > 0 ? ctx->leaf - 1 : -1);
+    if (target < 0) return;
+    int rows = shelf_rows();
+    int base = target * rows;
+    if (!s_prefetch_px)
+        s_prefetch_px = heap_caps_malloc((size_t)BOOK_COVER_W * BOOK_COVER_H, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_prefetch_px) return;
+    for (int k = 0; k < rows; ++k) {
+        int idx = base + k;
+        if (idx < 0 || idx >= s_visible_count) continue;
+        if (s_shelf[idx].removed) continue;
+        unsigned w = 0, h = 0;
+        if (book_cover_list_cache_dimensions(s_shelf[idx].path, s_shelf[idx].name, s_shelf[idx].author, &w, &h)) continue;
+        bool pending = false;
+        (void)book_cover_load_list_gray(s_shelf[idx].path, s_shelf[idx].name, s_shelf[idx].author,
+                                        s_prefetch_px, true, &pending, &w, &h);
+        return;
+    }
+}
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     app_redraw_t recovery = reader_font_recovery_tick(ctx);
     if (recovery != APP_REDRAW_NONE) return recovery;
@@ -8216,6 +8255,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     // Sample adaptive orientation each tick; on a switch request a full redraw, the present-time
     // rotation reconcile performs the re-layout.
     if (reader_orient_tick(ctx)) return APP_REDRAW_FULL;
+    shelf_prefetch_adjacent(ctx);
 
     app_redraw_t indent=reader_indent_hold_tick(ctx);
     if(indent!=APP_REDRAW_NONE)return indent;
