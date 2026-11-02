@@ -684,15 +684,14 @@ static void reader_relayout_keep_page(int rotation) {
     epd_set_rotation((enum EpdRotation)rotation);
     unlock_draw();
 }
-// 应用目标旋转：几何族变化才重排，同族只换旋转值（横↔横、竖↔180°）。
-// Apply a target rotation: only a geometry-family change re-lays out; same family just swaps.
+// 应用目标旋转：只要旋转值变化就完整重排/重绘（作废预渲染缓存并按新旋转重建正文），
+// 避免同族换向（竖↔180°）时贴回按旧旋转渲染的帧导致"只闪一下仍是正的"。
+// Apply a target rotation: any change does a full relayout/redraw (drops the prefetch cache and
+// rebuilds the body under the new rotation), so a same-family swap (portrait<->180°) can't show
+// the old-rotation frame.
 static void reader_apply_rotation(int rotation) {
-    if (reader_rot_is_landscape(rotation) != reader_rot_is_landscape(s_reader_layout_rot)) {
-        reader_relayout_keep_page(rotation);
-    } else {
-        s_reader_layout_rot = rotation;
-        if ((int)epd_get_rotation() != rotation) epd_set_rotation((enum EpdRotation)rotation);
-    }
+    if (rotation == s_reader_layout_rot) return;
+    reader_relayout_keep_page(rotation);
 }
 // 画屏前的统一对账：正文/目录/同向面板参与期望方向，其它视图一律回竖屏。
 // Reconcile before painting: body/TOC/native panels take the desired rotation, every other view portrait.
