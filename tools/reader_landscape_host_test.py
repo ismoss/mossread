@@ -40,7 +40,7 @@ static int s_view, s_reader_panel;
 static const char *s_text;
 static bool s_clear_confirm;
 static int build_calls;
-static unsigned landscape_mode;
+static unsigned app_settings_reader_landscape(void){return 0;}
 #define UI_LOCK_WIDTH 684
 #define UI_LOCK_HEIGHT 1216
 static int s_orient_desired = EPD_ROT_INVERTED_PORTRAIT;
@@ -58,7 +58,7 @@ static size_t book_layout_page_start_offset(size_t page){(void)page;return page_
 static size_t book_layout_page_for_offset(size_t off){(void)off;return page_for;}
 static bool book_layout_build_blocks(const char *t,size_t len,void *b,size_t c,EpdRect r,int px){
  (void)t;(void)len;(void)b;(void)c;(void)px;++build_calls;assert(r.width==reader_w());return true;}
-static unsigned app_settings_reader_landscape(void){return landscape_mode;}
+
 static void lock_draw(void){} static void unlock_draw(void){}
 static void invalidate_prep(void){}
 static void free_book(void){assert(false);}
@@ -108,44 +108,28 @@ int main(void){
  assert(reader_gesture_to_landscape(UI_GESTURE_SWIPE_D)==UI_GESTURE_SWIPE_L);
  s_rotation=EPD_ROT_INVERTED_PORTRAIT;
  assert(reader_gesture_to_landscape(UI_GESTURE_SWIPE_L)==UI_GESTURE_SWIPE_L);
- // 对账状态机：开横屏锚定重排并切旋转；横屏面板保持同向不重排，恢复面板回落竖屏；
- // 快切方向只换旋转。
- // Reconcile: enabling re-anchors and swaps; landscape panels keep the orientation without a
- // relayout, the recovery sheet falls back to portrait; switching direction only swaps rotation.
+ // 关自适应：sync 完全保持当前方向（不重排、不跳竖屏）；手动三档靠 apply 显式切。
+ // Adaptive off: sync keeps the current rotation untouched; manual three stops switch via apply.
  s_view=READING;s_text="t";s_reader_panel=READER_PANEL_NONE;s_clear_confirm=false;
- landscape_mode=0;page_start=700;page_for=9;
+ page_start=700;page_for=9;
+ s_reader_layout_rot=EPD_ROT_INVERTED_PORTRAIT;s_reader_landscape_layout=false;s_rotation=EPD_ROT_INVERTED_PORTRAIT;build_calls=0;
  reader_sync_rotation();
- assert(s_rotation==EPD_ROT_INVERTED_PORTRAIT&&!s_reader_landscape_layout&&build_calls==0);
- landscape_mode=1;
- reader_sync_rotation();
- assert(build_calls==1&&s_reader_landscape_layout&&
-        s_rotation==EPD_ROT_INVERTED_LANDSCAPE);
- // 统计面板与正文同向：打开不再回落竖屏，也不触发重排。
- // The stats sheet shares the body orientation: opening it neither falls back nor re-anchors.
- s_reader_panel=READER_PANEL_STATS;
- reader_sync_rotation();
- assert(build_calls==1&&s_reader_landscape_layout&&
-        s_rotation==EPD_ROT_INVERTED_LANDSCAPE);
- s_reader_panel=READER_PANEL_FONT_RECOVERY;
- reader_sync_rotation();
- assert(build_calls==2&&!s_reader_landscape_layout&&
-        s_rotation==EPD_ROT_INVERTED_PORTRAIT);
- s_reader_panel=READER_PANEL_TOOLS;
- reader_sync_rotation();
- assert(build_calls==3&&s_reader_landscape_layout&&
-        s_rotation==EPD_ROT_INVERTED_LANDSCAPE);
- landscape_mode=2;
- reader_sync_rotation();
- assert(build_calls==3&&s_rotation==EPD_ROT_LANDSCAPE);
- s_rotation=EPD_ROT_INVERTED_PORTRAIT;  // 模拟全局浮层借走竖屏后回到正文。
-                                        // A global overlay borrowed portrait; body repaints.
- reader_sync_rotation();
- assert(s_rotation==EPD_ROT_LANDSCAPE&&build_calls==3);
- // 无书或非正文视图永不全横屏。/ Bookless or non-body views never go landscape.
- s_text=NULL;landscape_mode=1;
- reader_sync_rotation();
+ assert(build_calls==0&&!s_reader_landscape_layout&&s_rotation==EPD_ROT_INVERTED_PORTRAIT);
+ reader_apply_rotation(EPD_ROT_INVERTED_LANDSCAPE);
+ assert(build_calls==1&&s_reader_landscape_layout&&s_rotation==EPD_ROT_INVERTED_LANDSCAPE);
+ // 同族横屏对调只换旋转，不重排。
+ reader_apply_rotation(EPD_ROT_LANDSCAPE);
+ assert(build_calls==1&&s_rotation==EPD_ROT_LANDSCAPE);
+ // 关态 sync 保持横屏（面板同向也不回落）。
+ s_reader_panel=READER_PANEL_STATS;reader_sync_rotation();
+ assert(s_reader_landscape_layout&&s_rotation==EPD_ROT_LANDSCAPE&&build_calls==1);
+ // 回竖屏。
+ reader_apply_rotation(EPD_ROT_INVERTED_PORTRAIT);
+ assert(build_calls==2&&!s_reader_landscape_layout&&s_rotation==EPD_ROT_INVERTED_PORTRAIT);
+ // 无书/非正文：sync 回竖屏（竖屏同族不重排）。
+ s_text=NULL;reader_sync_rotation();
  assert(!s_reader_landscape_layout&&s_rotation==EPD_ROT_INVERTED_PORTRAIT);
- puts("PASS: landscape touch corners, gesture pairs, anchored reconcile, panel orientation keep/fallback and direction swap");
+ puts("PASS: landscape touch corners, gesture pairs, keep-current on adaptive-off, manual apply, panel keep and portrait fallback");
  return 0;
 }
 '''
@@ -153,6 +137,6 @@ with tempfile.TemporaryDirectory() as tmp:
     p = Path(tmp) / 'test.c'
     p.write_text(unit)
     exe = Path(tmp) / 'test'
-    subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
+    subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function',
                     '-fsanitize=address,undefined', str(p), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

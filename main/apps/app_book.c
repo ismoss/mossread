@@ -620,14 +620,26 @@ static int rot_from_deg(int deg) {
 // Desired rotation: gravity when adaptive, otherwise the manual three stops.
 static int reader_want_rotation(void) {
     if (app_settings_reader_adaptive()) return s_orient_desired;
-    switch (app_settings_reader_landscape()) {
-        case 1: return EPD_ROT_INVERTED_LANDSCAPE;
-        case 2: return EPD_ROT_LANDSCAPE;
-        case 3: return EPD_ROT_PORTRAIT;
-        default: return EPD_ROT_INVERTED_PORTRAIT;
-    }
+    // 关自适应：保持当前方向不动（含 180°），只有工具栏三档才显式切。
+    // Adaptive off: keep the current rotation untouched (incl. 180°); only the manual key changes it.
+    return s_reader_layout_rot;
 }
 static bool reader_want_landscape(void) { return reader_rot_is_landscape(reader_want_rotation()); }
+// 手动三档：按当前方向轮转（竖→横右→横左→竖），并给出目标名字。
+// Manual three stops: cycle from the current rotation (portrait -> right -> left -> portrait).
+static int reader_manual_next_rot(void) {
+    if (s_reader_layout_rot == EPD_ROT_INVERTED_PORTRAIT) return EPD_ROT_INVERTED_LANDSCAPE;
+    if (s_reader_layout_rot == EPD_ROT_INVERTED_LANDSCAPE) return EPD_ROT_LANDSCAPE;
+    return EPD_ROT_INVERTED_PORTRAIT;
+}
+static const char *reader_rot_name(int rot) {
+    switch (rot) {
+        case EPD_ROT_INVERTED_LANDSCAPE: return "横屏·右";
+        case EPD_ROT_LANDSCAPE: return "横屏·左";
+        case EPD_ROT_PORTRAIT: return "竖屏·倒";
+        default: return "竖屏";
+    }
+}
 // 横屏下与正文同向的二级面板：打开时不再转回竖屏，绘制与命中都直接用横屏视口几何。
 // Panels that share the body orientation in landscape: opening them keeps the rotation and
 // their paint/hit geometry uses the landscape viewport directly.
@@ -747,13 +759,9 @@ static bool reader_orient_tick(app_ctx_t* ctx) {
             s_orient_desired = s_reader_layout_rot;
             s_orient_calibrate = true;
         } else {
-            // 关闭：把"当前方向"写进手动档（含 180°=存 3），sync 读手动档即保持当前方向。
-            // Disabling: seed the manual stop with the current rotation (180° stored as 3) so sync keeps it.
+            // 关闭：保持当前方向不动（sync 关态直接读当前布局）；清校准状态。
+            // Disabling: keep the current rotation untouched (sync reads the live layout when off).
             s_orient_calibrate = false;
-            uint8_t stop = !reader_rot_is_landscape(s_reader_layout_rot)
-                ? (s_reader_layout_rot == EPD_ROT_PORTRAIT ? 3 : 0)
-                : (s_reader_layout_rot == EPD_ROT_INVERTED_LANDSCAPE ? 1 : 2);
-            app_settings_set_reader_landscape(stop);
         }
     }
     if (!app_settings_reader_adaptive()) return false;
@@ -768,10 +776,15 @@ static bool reader_orient_tick(app_ctx_t* ctx) {
     const int gx = (int)sample.x_mg - READ_PICO_ACCEL_ZERO_X_MG;
     const int gy = (int)sample.y_mg - READ_PICO_ACCEL_ZERO_Y_MG;
     if (s_orient_calibrate) {
-        s_orient_calibrate = false;
+        // 平放时无法校准，继续等下一次采样（不丢弃校准请求，修"开机默认自适应但换向没反应"）。
+        // Flat cannot calibrate: keep waiting (don't drop the request) so a boot with adaptive on
+        // still calibrates the first time the device is picked up.
         if (gx * gx + gy * gy >= 90000) {
+            s_orient_base_rot = s_reader_layout_rot;  // 以当前显示方向为基准
+            s_orient_desired = s_reader_layout_rot;
             s_orient_ref_x = gx; s_orient_ref_y = gy; s_orient_ref_ready = true;
             s_orient_seen_idx = -1; s_orient_seen_n = 0;
+            s_orient_calibrate = false;
         }
         return false;
     }
@@ -3406,10 +3419,9 @@ static void draw_reader_panel(uint8_t* fb) {
             if (i == BOOK_TOOL_LANDSCAPE) {
                 // 标签写目标档而不是当前档：点一下就到写的方向。
                 // The label names the destination, not the current stop.
-                uint8_t next = (app_settings_reader_landscape() + 1) % 3;
                 snprintf(label, sizeof(label), "%s", app_settings_reader_adaptive()
                     ? (s_orient_locked ? "取消锁定" : "锁定")
-                    : next == 0 ? "竖屏" : next == 1 ? "横屏·右" : "横屏·左");
+                    : reader_rot_name(reader_manual_next_rot()));
             } else snprintf(label, sizeof(label), "%s", bookmarked ? "已书签" : labels[i]);
             ui_text_box(fb,(EpdRect){rect.x+6,top+63,rect.width-12,40},20,label,EPD_DRAW_ALIGN_CENTER,false);
         }
@@ -6530,10 +6542,7 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 if (app_settings_reader_adaptive()) {
                     s_orient_locked = !s_orient_locked;
                 } else {
-                    uint8_t next = (uint8_t)((app_settings_reader_landscape() + 1) % 3);
-                    app_settings_set_reader_landscape(next);
-                    reader_apply_rotation(next == 1 ? EPD_ROT_INVERTED_LANDSCAPE
-                                        : next == 2 ? EPD_ROT_LANDSCAPE : EPD_ROT_INVERTED_PORTRAIT);
+                    reader_apply_rotation(reader_manual_next_rot());
                 }
                 s_reader_panel = READER_PANEL_NONE;
             } else {

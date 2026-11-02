@@ -64,6 +64,7 @@ static unsigned landscape_mode = 1;
 typedef enum EpdRotation { EPD_ROT_LANDSCAPE, EPD_ROT_PORTRAIT, EPD_ROT_INVERTED_LANDSCAPE,
                            EPD_ROT_INVERTED_PORTRAIT } EpdRotation;
 static int s_orient_desired = EPD_ROT_INVERTED_PORTRAIT;
+static int s_reader_layout_rot = EPD_ROT_INVERTED_LANDSCAPE;
 static bool app_settings_reader_adaptive(void){return false;}
 static bool s_bookmark_edit;
 static unsigned font_scale = 100;
