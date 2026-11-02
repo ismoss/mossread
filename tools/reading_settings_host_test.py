@@ -44,7 +44,8 @@ int main(void){
     const unsigned expected[]={15,30,0,5,10};
     for(unsigned i=0;i<5;++i){s_turns=100;assert(reading_settings_action(&ctx,120,750)==APP_REDRAW_PAGE);assert(full_pages==(int)expected[i]&&!s_turns);}
     full_pages=77;reading_settings_action(&ctx,120,750);assert(full_pages==5);
-    for(unsigned i=0;i<6;++i){reading_settings_action(&ctx,450,750);assert(effect==(int)((i+1)%2));}
+    const int effect_cycle[]={1,3,2,0,1,3};
+    for(unsigned i=0;i<6;++i){reading_settings_action(&ctx,450,750);assert(effect==effect_cycle[i]);}
     s_reader_panel=READER_PANEL_REFRESH_SETTINGS;
     reading_settings_action(&ctx,120,850);assert(s_reader_panel==READER_PANEL_TURN_SETTINGS);
     s_reader_panel=READER_PANEL_REFRESH_SETTINGS;

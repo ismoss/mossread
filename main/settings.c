@@ -17,7 +17,9 @@
 #include "settings.h"
 #include "mod_dns.h"
 #include "kiiko_board_config.h"
-#define READER_TURN_EFFECT_MAX 2
+// 四档：0 普通·高清 / 1 水波纹·快刷 / 2 普通·快刷(速读) / 3 水波纹·高清。旧机 0/1/2 语义不变。
+// Four modes; 0/1/2 keep the old meaning and 3 adds the HD ripple.
+#define READER_TURN_EFFECT_MAX 3
 #include "book/book_font_size.h"
 
 #include <stdio.h>

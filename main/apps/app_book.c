@@ -2712,8 +2712,12 @@ static void draw_reading_settings(uint8_t* fb) {
     if (pages) snprintf(interval, sizeof(interval), "每 %u 页", pages);
     else copy_text(interval, sizeof(interval), "不强制");
     draw_reading_card(fb, 0, "自动全刷", interval, true);
-    draw_reading_card(fb, 1, "翻页效果", app_settings_reader_turn_effect()==2?"速读黑白":
-        app_settings_reader_turn_effect()?"水波纹":"普通",true);
+    // 四档翻页：0 普通·高清 / 1 水波纹·快刷 / 2 普通·快刷(速读) / 3 水波纹·高清；旧机 0/1/2 语义不变。
+    // Four turn modes; 0/1/2 keep the old meaning, 3 adds the HD ripple.
+    const uint8_t turn_mode = app_settings_reader_turn_effect();
+    const char *turn_label = turn_mode == 1 ? "水波纹·快刷" : turn_mode == 2 ? "普通·快刷" :
+                             turn_mode == 3 ? "水波纹·高清" : "普通·高清";
+    draw_reading_card(fb, 1, "翻页效果", turn_label, true);
     draw_reading_card(fb, 2, "翻页模式", app_settings_reader_vertical_turn() ? "上下翻页" : "左右翻页", false);
     draw_reading_toggle(fb, 0, "电源键翻页", NULL, app_settings_reader_power_turn());
     draw_reading_card(fb, 4, "按键控制", "自定义三键", false);
@@ -4148,7 +4152,7 @@ static bool present(app_ctx_t* ctx, app_redraw_t redraw) {
     if (image_gray_refresh && redraw == APP_REDRAW_AREA && !s_reader_cleanup && s_presented_view == (int)READING) {
         // 灰阶只驱动正文，避免每张插图都把整屏先清白再闪回。
         // Drive the grayscale body from the current frame instead of clearing the whole screen to white.
-        err = app_settings_reader_turn_effect() == 1
+        err = app_settings_reader_turn_effect() == 1 || app_settings_reader_turn_effect() == 3
             ? update_display_area_diff_with(ctx->hl, &E0470_WAVEFORM, MODE_GL16, reader_area())
             : update_display_area_with(ctx->hl, &E0470_FULL_WAVEFORM, MODE_GC16, reader_area());
         if (err == EPD_DRAW_SUCCESS && s_reader_footer_pending)
@@ -4157,7 +4161,7 @@ static bool present(app_ctx_t* ctx, app_redraw_t redraw) {
             err = update_display_area_diff_with(ctx->hl, &E0470_WAVEFORM, MODE_GL16,
                                                 reader_fullscreen_progress_area());
     }
-    else if (image_gray_refresh) err = app_settings_reader_turn_effect() == 1 &&
+    else if (image_gray_refresh) err = (app_settings_reader_turn_effect() == 1 || app_settings_reader_turn_effect() == 3) &&
         redraw != APP_REDRAW_FULL && !s_reader_cleanup
         ? update_display_mode_diff(ctx->hl, MODE_GL16)
         : update_display_with(ctx->hl, &E0470_FULL_WAVEFORM, MODE_GC16);
@@ -4189,7 +4193,9 @@ static bool present(app_ctx_t* ctx, app_redraw_t redraw) {
             turn_area=ui_rect_union(turn_area,footer);
         }
         err = s_water_turn_pending
-            ? update_display_water_turn(ctx->hl, s_area, s_water_turn_dir)
+            ? (app_settings_reader_turn_effect() == 3
+                ? update_display_water_turn_hd(ctx->hl, s_area, s_water_turn_dir)
+                : update_display_water_turn(ctx->hl, s_area, s_water_turn_dir))
             : s_reader_turn_pending && s_mode == MODE_GL16 && app_settings_reader_turn_effect() == 2 &&
               s_view == READING && s_presented_view == (int)READING &&
               s_reader_panel == READER_PANEL_NONE && !s_toolbar && !s_clear_confirm &&
@@ -5748,7 +5754,8 @@ static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
     s_reader_turn_pending = !chrome_changed && redraw == APP_REDRAW_AREA && from_text_frame &&
         book_layout_page_image_count(s_page) == 0 && !app_settings_book_background_path()[0];
     s_water_turn_pending = !chrome_changed && redraw == APP_REDRAW_AREA && !s_reader_cleanup &&
-                           app_settings_reader_turn_effect() == 1 && from_text_frame &&
+                           (app_settings_reader_turn_effect() == 1 || app_settings_reader_turn_effect() == 3) &&
+                           from_text_frame &&
                            book_layout_page_image_count(s_page) == 0 && !app_settings_book_background_path()[0];
     s_water_turn_dir = dir > 0 ? E0470_TURN_RTL : E0470_TURN_LTR;
     return chrome_changed ? APP_REDRAW_PAGE : redraw;
@@ -6220,7 +6227,13 @@ static app_redraw_t reading_settings_action(app_ctx_t *ctx, uint16_t x, uint16_t
         app_settings_set_reader_full_pages(options[next]);
         s_turns = 0;
     } else if (ui_rect_hit(reading_setting_rect(1), x, y)) {
-        app_settings_set_reader_turn_effect((app_settings_reader_turn_effect()+1)%3);
+        // 4 档按 普通快刷→普通高清→水波纹快刷→水波纹高清 轮换，旧机取值 0/1/2 语义不变。
+        // Cycle the four modes; legacy 0/1/2 keep their meaning.
+        static const uint8_t turn_order[4] = {2, 0, 1, 3};
+        uint8_t turn_cur = app_settings_reader_turn_effect();
+        unsigned turn_idx = 0;
+        for (unsigned i = 0; i < 4; ++i) if (turn_order[i] == turn_cur) { turn_idx = i; break; }
+        app_settings_set_reader_turn_effect(turn_order[(turn_idx + 1) % 4]);
         // 新模式从新一轮计数开始，首次翻页不继承旧模式的自动全刷欠账。
         // Start a fresh cleanup cycle so the first turn does not inherit the previous effect's cleanup debt.
         s_turns=0;

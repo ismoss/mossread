@@ -120,6 +120,9 @@ enum EpdDrawError update_display_area_diff_with(
 /// Staggered text phases retain eight-band pacing, hold unchanged grays and soften edge transients; missing phases fall back and failures rebuild the baseline.
 enum EpdDrawError update_display_water_turn(EpdiyHighlevelState* hl, EpdRect area,
                                              e0470_turn_dir_t dir);
+/// 水波纹·高清：同一揭页引擎改走 FULL 标定扫描，观感更稳但更慢。/ Water HD ripple on the FULL calibrated scan.
+enum EpdDrawError update_display_water_turn_hd(EpdiyHighlevelState* hl, EpdRect area,
+                                             e0470_turn_dir_t dir);
 /// 同步普通文字翻页沿用水波纹的全部灰阶相位，单带同时输出并恢复原节拍。/ Ordinary text uses all ripple gray phases in one synchronous band and restores pacing.
 enum EpdDrawError update_display_text_turn(EpdiyHighlevelState* hl, EpdRect area, e0470_turn_dir_t dir);
 /// 动画中间帧使用灰阶波形，但不累计周期清屏计数；动画最终帧走普通刷新出口。

@@ -682,12 +682,13 @@ static enum EpdDrawError update_display_area_full_with_unlocked(
 }
 
 static enum EpdDrawError update_display_reader_turn_unlocked(EpdiyHighlevelState* hl, EpdRect area,
-                                             e0470_turn_dir_t dir, unsigned bands, const EpdWaveform* waveform) {
+                                             e0470_turn_dir_t dir, unsigned bands, const EpdWaveform* waveform,
+                                             bool full_scan) {
     enum EpdDrawError intercepted;
     if (main_before_update(hl, &intercepted)) return intercepted;
     // 阅读普通翻页和水波纹共用灰阶扫描；主页保留独立路径。
     // Ordinary reader turns and ripple share gray scanning; main tabs retain their separate path.
-    read_pico_epd_use_scan(READ_PICO_EPD_SCAN_FAST);
+    read_pico_epd_use_scan(full_scan ? READ_PICO_EPD_SCAN_FULL : READ_PICO_EPD_SCAN_FAST);
     // 真机首轮文字扫描在预绘制并发时出现欠载；使用现有127行上限预填，不扩大队列或改变帧节拍。
     // The first real text scan underruns during concurrent prepainting; prefill the existing 127-line limit without growing queues or changing frame pacing.
     epd_lcd_set_prefill_lines(127);
@@ -721,7 +722,14 @@ static enum EpdDrawError update_display_reader_turn_unlocked(EpdiyHighlevelState
 
 static enum EpdDrawError update_display_water_turn_unlocked(EpdiyHighlevelState* hl, EpdRect area,
                                              e0470_turn_dir_t dir) {
-    return update_display_reader_turn_unlocked(hl,area,dir,E0470_TURN_FAST_BANDS,display_reader_text_waveform());
+    return update_display_reader_turn_unlocked(hl,area,dir,E0470_TURN_FAST_BANDS,display_reader_text_waveform(),false);
+}
+// 水波纹·高清：同一揭页引擎，改用 FULL 标定扫描（更慢但字边更稳），拍数与波形表与快刷相同。
+// Water HD: the same page-turn engine on the FULL calibrated scan (slower, steadier edges); the
+// band count and waveform table match the fast ripple.
+static enum EpdDrawError update_display_water_turn_hd_unlocked(EpdiyHighlevelState* hl, EpdRect area,
+                                             e0470_turn_dir_t dir) {
+    return update_display_reader_turn_unlocked(hl,area,dir,E0470_TURN_FAST_BANDS,display_reader_text_waveform(),true);
 }
 
 // 供数不足时的兜底：把频率退回安全值，整屏白一次，让后面的差分刷有干净参考帧。
@@ -990,6 +998,18 @@ enum EpdDrawError update_display_water_turn(EpdiyHighlevelState* hl, EpdRect are
     LATENCY_DISPLAY_END();
     return result;
 }
+// 水波纹·高清的对外出口：与快刷同一套锁/Latency 包装，仅换了标定扫描。
+// Public HD ripple entry: same locking/latency wrapper as the fast ripple, only the scan differs.
+enum EpdDrawError update_display_water_turn_hd(EpdiyHighlevelState* hl, EpdRect area,
+                                             e0470_turn_dir_t dir) {
+    LATENCY_DISPLAY_BEGIN();
+    bool held = pico_online_display_begin();
+    enum EpdDrawError result = display_needs_full()
+        ? update_display_full_unlocked(hl) : update_display_water_turn_hd_unlocked(hl, area, dir);
+    pico_online_display_end(held);
+    LATENCY_DISPLAY_END();
+    return result;
+}
 
 // 保留侧滑返回的方向和系统灰阶；其余刷新恢复原rc96。
 // Keep directional system-gray edge returns; restore the remaining rc96 presentation path.
@@ -999,7 +1019,7 @@ enum EpdDrawError update_display_main_turn(EpdiyHighlevelState* hl,EpdRect area,
     const int prior_tick=e0470_page_turn_tick_us();
     e0470_page_turn_set_tick_us(E0470_TURN_FAST_TICK_US);
     enum EpdDrawError result=display_needs_full()?update_display_full_unlocked(hl):
-        update_display_reader_turn_unlocked(hl,area,dir,E0470_TURN_FAST_BANDS,display_main_ui_waveform());
+        update_display_reader_turn_unlocked(hl,area,dir,E0470_TURN_FAST_BANDS,display_main_ui_waveform(),false);
     e0470_page_turn_set_tick_us(prior_tick);
     pico_online_display_end(held);LATENCY_DISPLAY_END();return result;
 }
