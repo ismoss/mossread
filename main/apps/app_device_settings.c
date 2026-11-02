@@ -93,7 +93,7 @@ typedef enum { SETTINGS_MAIN, SETTINGS_WIFI, SETTINGS_TIME,
                SETTINGS_POWER_SLEEP, SETTINGS_AUTO_LOCK, SETTINGS_PROFILE, SETTINGS_AVATAR,
                SETTINGS_BLUETOOTH, SETTINGS_BLE_SCAN,
                SETTINGS_LOCK_PIN, SETTINGS_PIN_ENTRY, SETTINGS_TEXT_EDIT, SETTINGS_SPECIAL, SETTINGS_RAM_DIAG,
-               SETTINGS_MONITOR } settings_page_t;
+               SETTINGS_GESTURE, SETTINGS_MONITOR } settings_page_t;
 static settings_page_t s_page;
 static bool s_monitor_url_shown;  // 监看地址是否已绘上屏（出现/消失触发重绘）/ whether the monitor address has been painted
 static int settings_content_end(void) {
@@ -403,7 +403,7 @@ static int settings_main_row_height(void) {
 #define SETTINGS_ROW_H settings_main_row_height()
 #define SETTINGS_WIRELESS_ROWS 5
 #define SETTINGS_DISPLAY_ROWS 8
-#define SETTINGS_PERSONAL_ROWS 4
+#define SETTINGS_PERSONAL_ROWS 5
 #define SETTINGS_MAINTENANCE_ROWS 6
 #define SETTINGS_WIRELESS_Y (180 + settings_profile_height() + 77)
 #define SETTINGS_DISPLAY_Y (SETTINGS_WIRELESS_Y + SETTINGS_WIRELESS_ROWS * SETTINGS_ROW_H + 78)
@@ -1023,6 +1023,11 @@ static bool monitor_url_ready(void) {
     return mod_monitor_enabled() && url[0];
 }
 
+static EpdRect settings_gesture_row(int i) { return (EpdRect){36, 214 + i * 118, 612, 100}; }
+static const char *settings_gesture_action_label(uint8_t v) {
+    static const char *const names[] = {"默认（原行为）","上一页","下一页","阅读工具栏","切换全屏","返回主页","手动全刷","不操作"};
+    return v < (uint8_t)(sizeof(names) / sizeof(names[0])) ? names[v] : names[0];
+}
 static void render_content(app_ctx_t *ctx, uint8_t *fb) {
     (void)ctx;
     if (s_page == SETTINGS_PIN_ENTRY) { ui_pinpad_paint(fb, &s_pinpad, ui_pinpad_full()); return; }
@@ -1509,6 +1514,20 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         ui_text(fb, 48, 620, 22, "请用 USB 连接电脑，再打开官网刷机页", EPD_DRAW_ALIGN_LEFT, false);
         settings_navigation(fb); return;
     }
+    if (s_page == SETTINGS_GESTURE) {
+        back_header(fb, "阅读手势");
+        static const char *const slots[] = {"左滑", "右滑", "上滑", "下滑", "长按"};
+        for (int i = 0; i < APP_READER_GESTURE_SLOT_COUNT; ++i) {
+            EpdRect row = settings_gesture_row(i);
+            settings_card(fb, row, 20, UI_GRAY_WHITE, 0x70);
+            ui_text(fb, row.x + 24, row.y + 16, 25, slots[i], EPD_DRAW_ALIGN_LEFT, false);
+            ui_text(fb, row.x + 24, row.y + 56, 21, settings_gesture_action_label(app_settings_reader_gesture((unsigned)i)), EPD_DRAW_ALIGN_LEFT, false);
+            ui_draw_icon(fb, row.x + row.width - 34, row.y + row.height / 2, 22, UI_ICON_CHEVRON_RIGHT, 0x38);
+        }
+        ui_text(fb, 48, 214 + APP_READER_GESTURE_SLOT_COUNT * 118 - 4, 19, "仅阅读正文生效；默认=保持原行为", EPD_DRAW_ALIGN_LEFT, false);
+        settings_navigation(fb);
+        return;
+    }
     if (s_page == SETTINGS_RAM_DIAG) {
         back_header(fb, "内存诊断");
         size_t inf = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
@@ -1794,11 +1813,11 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
     setting_group(fb,SETTINGS_DISPLAY_Y-49,"显示",SETTINGS_DISPLAY_Y,
                   display_icons,display_labels,display_values,SETTINGS_DISPLAY_ROWS);
     snprintf(signature,sizeof(signature),"%s",app_settings_status_signature()[0]?app_settings_status_signature():"未设置");
-    const char *personal_labels[]={"书架样式","锁屏样式","锁屏密码","状态栏签名"};
+    const char *personal_labels[]={"书架样式","锁屏样式","锁屏密码","状态栏签名","阅读手势"};
     const char *personal_values[]={app_settings_shelf_style()==5?"列表书架":app_settings_shelf_style()==1?"深色书轨":"亚克力书架",
         app_settings_lock_style()==3?"透明书封":app_settings_lock_style()==2?"书架拼贴":app_settings_lock_style()==1?"壁纸":"阅读票根",
-        lock_pin_enabled()?"已开启":"已关闭",signature};
-    const int personal_icons[]={4,5,16,10};
+        lock_pin_enabled()?"已开启":"已关闭",signature,"点击设置"};
+    const int personal_icons[]={4,5,16,10,10};
     setting_group(fb,SETTINGS_PERSONAL_Y-49,"个性化功能",SETTINGS_PERSONAL_Y,
                   personal_icons,personal_labels,personal_values,SETTINGS_PERSONAL_ROWS);
     const char *maintenance_labels[]={"系统升级","保存与恢复","屏幕修复","BOOT 刷机","恢复出厂设置","内存诊断"};
@@ -2263,6 +2282,24 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         ui_rect_hit((EpdRect){36, 606, 612, 84}, ev->x0, ev->y0)) {
         app_settings_set_pin_grace_code((app_settings_pin_grace_code() + 1) % 5);
         return APP_REDRAW_PAGE;
+    }
+    if (s_page == SETTINGS_GESTURE) {
+        if (ev->type != UI_GESTURE_TAP) return APP_REDRAW_NONE;
+        if (ev->y0 < 190 && ev->x0 < 170) {
+            s_page = SETTINGS_MAIN;
+            (void)read_pico_transfer_get_saved_wifi(s_main_wifi, &s_main_wifi_saved);
+            settings_prepare_profile();
+            return APP_REDRAW_PAGE;
+        }
+        int tab = settings_nav_hit(ev->x0, ev->y0);
+        if (tab >= 0) { ui_nav_request(ctx, tab); return APP_REDRAW_NONE; }
+        for (int i = 0; i < APP_READER_GESTURE_SLOT_COUNT; ++i) {
+            if (!ui_rect_hit(settings_gesture_row(i), ev->x0, ev->y0)) continue;
+            app_settings_set_reader_gesture((unsigned)i,
+                (uint8_t)((app_settings_reader_gesture((unsigned)i) + 1) % 8));
+            return APP_REDRAW_PAGE;
+        }
+        return APP_REDRAW_NONE;
     }
 
     if (s_page == SETTINGS_BOOT) {
@@ -2845,7 +2882,8 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         if(row==0) {s_page=SETTINGS_SHELF_STYLE;s_style_scroll=0;}
         else if(row==1)s_page=SETTINGS_LOCK_STYLE;
         else if(row==2){s_page=SETTINGS_LOCK_PIN;s_notice[0]=0;}
-        else profile_editor_open(true);
+        else if(row==3)profile_editor_open(true);
+        else s_page=SETTINGS_GESTURE;
         return APP_REDRAW_PAGE;
     }
     if(y>=SETTINGS_MAINTENANCE_Y && y<SETTINGS_MAINTENANCE_Y+SETTINGS_MAINTENANCE_ROWS*SETTINGS_ROW_H) {

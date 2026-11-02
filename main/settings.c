@@ -88,6 +88,11 @@
 #define NVS_KEY_READER_ADAPTIVE "rd_adapt"
 #define NVS_KEY_READER_ORIENT_LOCK "rd_olock"
 #define NVS_KEY_READER_ORIENT_LOCK_ROT "rd_olock_rot"
+#define NVS_KEY_READER_GESTURE0 "rd_g0"
+#define NVS_KEY_READER_GESTURE1 "rd_g1"
+#define NVS_KEY_READER_GESTURE2 "rd_g2"
+#define NVS_KEY_READER_GESTURE3 "rd_g3"
+#define NVS_KEY_READER_GESTURE4 "rd_g4"
 #define NVS_KEY_BLE_TURNER "ble_turn"
 // 二改：后台自动重连已保存 WiFi 的总开关（默认开）。/ Mod: master switch for background WiFi auto-reconnect (default on).
 #define NVS_KEY_WIFI_AUTO "wifi_auto"
@@ -164,6 +169,9 @@ static bool s_reader_adaptive;
 // Adaptive-direction lock flag and the rotation it froze; persisted across lock/deep sleep.
 static bool s_reader_orient_lock;
 static uint8_t s_reader_orient_lock_rot;
+// 阅读正文可配置手势：0=默认(原行为)，1..7=三键动作同序。槽位：左/右/上/下滑、长按。
+// Configurable reader gestures: 0 = default behaviour, 1..7 mirror the three-key actions.
+static uint8_t s_reader_gesture[APP_READER_GESTURE_SLOT_COUNT];
 static bool s_ble_turner;
 // 二改（mod27 默认关，mod29 继承旧默认）：`wifi_auto` 只有用户拨过开关才有键，所以"键存在"本身
 // 就是"用户做过选择"的证据。键缺失时由 app_main 在开机按旧默认判定一次并落盘：有已保存 WiFi
@@ -405,6 +413,15 @@ void app_settings_init(void) {
         s_reader_orient_lock = orient_lock == 1;
     if (nvs_get_u8(h, NVS_KEY_READER_ORIENT_LOCK_ROT, &orient_lock_rot) == ESP_OK && orient_lock_rot <= 3)
         s_reader_orient_lock_rot = orient_lock_rot;
+    static const char *const gesture_keys[APP_READER_GESTURE_SLOT_COUNT] = {
+        NVS_KEY_READER_GESTURE0, NVS_KEY_READER_GESTURE1, NVS_KEY_READER_GESTURE2,
+        NVS_KEY_READER_GESTURE3, NVS_KEY_READER_GESTURE4
+    };
+    for (unsigned i = 0; i < APP_READER_GESTURE_SLOT_COUNT; ++i) {
+        uint8_t g = 0;
+        if (nvs_get_u8(h, gesture_keys[i], &g) == ESP_OK && g <= APP_READER_KEY_COUNT)
+            s_reader_gesture[i] = g;
+    }
     for (unsigned i = 0; i < 3; ++i) {
         uint8_t value;
         if (nvs_get_u8(h, s_reader_key_names[i], &value) == ESP_OK && value < APP_READER_KEY_COUNT)
@@ -898,6 +915,19 @@ void app_settings_set_reader_orient_lock_rot(uint8_t rot) {
     if (rot > 3 || rot == s_reader_orient_lock_rot) return;
     s_reader_orient_lock_rot = rot;
     nvs_put_u8(NVS_KEY_READER_ORIENT_LOCK_ROT, rot);
+}
+uint8_t app_settings_reader_gesture(unsigned slot) {
+    return slot < APP_READER_GESTURE_SLOT_COUNT ? s_reader_gesture[slot] : 0;
+}
+void app_settings_set_reader_gesture(unsigned slot, uint8_t value) {
+    if (slot >= APP_READER_GESTURE_SLOT_COUNT || value > APP_READER_KEY_COUNT ||
+        s_reader_gesture[slot] == value) return;
+    s_reader_gesture[slot] = value;
+    static const char *const gesture_keys[APP_READER_GESTURE_SLOT_COUNT] = {
+        NVS_KEY_READER_GESTURE0, NVS_KEY_READER_GESTURE1, NVS_KEY_READER_GESTURE2,
+        NVS_KEY_READER_GESTURE3, NVS_KEY_READER_GESTURE4
+    };
+    nvs_put_u8(gesture_keys[slot], value);
 }
 bool app_settings_reader_power_turn(void) { return s_reader_power_turn; }
 void app_settings_set_reader_power_turn(bool on) {

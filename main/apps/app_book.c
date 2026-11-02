@@ -530,6 +530,7 @@ static void release_page_images(void);
 static void sort_shelf(app_ctx_t* ctx);
 static void prepare_covers(app_ctx_t* ctx);
 static app_redraw_t toggle_reader_fullscreen(app_ctx_t* ctx);
+static app_redraw_t reader_key_action(app_ctx_t *ctx, app_reader_key_action_t action);
 bool app_book_request_open(const char* path) {
     if (!path || !path[0] || strnlen(path, sizeof(s_requested_open)) >= sizeof(s_requested_open)) return false;
     if (!book_file_path_supported(path)) return false;
@@ -7890,6 +7891,28 @@ static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* even
         s_reader_panel == READER_PANEL_BACKGROUND_PREVIEW) &&
         (ev->type == UI_GESTURE_SWIPE_U || ev->type == UI_GESTURE_SWIPE_D)) {
         return reader_background_step(ev->type == UI_GESTURE_SWIPE_U ? 1 : -1);
+    }
+    // 可配置阅读手势：默认 0 = 走原逻辑，默认全关不影响现有交互；仅裸正文（无面板/工具栏/缩放）。
+    // Configurable reader gestures: 0 = default path, so existing behaviour is untouched; bare body only.
+    if (s_view == READING && s_reader_panel == READER_PANEL_NONE && !s_toolbar &&
+        !s_clear_confirm && !s_scan_pending && !reader_zoom_mode()) {
+        int gslot = -1;
+        switch (ev->type) {
+            case UI_GESTURE_SWIPE_L: gslot = 0; break;
+            case UI_GESTURE_SWIPE_R: gslot = 1; break;
+            case UI_GESTURE_SWIPE_U: gslot = 2; break;
+            case UI_GESTURE_SWIPE_D: gslot = 3; break;
+            case UI_GESTURE_LONG_PRESS: gslot = 4; break;
+            default: break;
+        }
+        if (gslot >= 0) {
+            uint8_t gv = app_settings_reader_gesture((unsigned)gslot);
+            if (gv) {
+                app_reader_key_action_t act = (app_reader_key_action_t)(gv - 1);
+                s_reader_tap.pending = false;
+                return act == APP_READER_KEY_NONE ? APP_REDRAW_NONE : reader_key_action(ctx, act);
+            }
+        }
     }
     if (ev->type == UI_GESTURE_CANCEL || ev->type == UI_GESTURE_LONG_PRESS ||
         ev->type == UI_GESTURE_SWIPE_L || ev->type == UI_GESTURE_SWIPE_R ||

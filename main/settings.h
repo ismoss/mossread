@@ -162,6 +162,13 @@ bool app_settings_reader_orient_lock(void);
 void app_settings_set_reader_orient_lock(bool on);
 uint8_t app_settings_reader_orient_lock_rot(void);
 void app_settings_set_reader_orient_lock_rot(uint8_t rot);
+/// 阅读正文可配置手势槽位：0 左滑、1 右滑、2 上滑、3 下滑、4 长按。
+/// Configurable reader gesture slots: 0 swipe-left, 1 swipe-right, 2 swipe-up, 3 swipe-down, 4 long-press.
+#define APP_READER_GESTURE_SLOT_COUNT 5
+/// 槽位值：0=默认(原行为)，1..7 对应 APP_READER_KEY_PREV..APP_READER_KEY_NONE+1。
+/// Slot value: 0 = default behaviour, 1..7 mirror the three-key action enum plus one.
+uint8_t app_settings_reader_gesture(unsigned slot);
+void app_settings_set_reader_gesture(unsigned slot, uint8_t value);
 /// 阅读正文里短按电源键翻下一页；默认关闭。/ Short power press turns forward only in reader body; off by default.
 bool app_settings_reader_power_turn(void);
 void app_settings_set_reader_power_turn(bool on);
