@@ -61,6 +61,8 @@ static bool app_settings_home_full_refresh(void){return home_full;}
 static void app_settings_set_home_full_refresh(bool on){home_full=on;}
 static bool app_settings_reader_adaptive(void){return false;}
 static void app_settings_set_reader_adaptive(bool on){(void)on;}
+static bool app_settings_reader_hide_images(void){return false;}
+static void app_settings_set_reader_hide_images(bool on){(void)on;}
 '''
 for name in ('settings_profile_height','settings_main_row_height'):
     unit+=function(name,ROOT/'main/apps/app_device_settings.c')+'\n'
