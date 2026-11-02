@@ -92,7 +92,7 @@ typedef enum { SETTINGS_MAIN, SETTINGS_WIFI, SETTINGS_TIME,
                SETTINGS_CONFIG, SETTINGS_UPGRADE, SETTINGS_BOOT, SETTINGS_FACTORY_RESET,
                SETTINGS_POWER_SLEEP, SETTINGS_AUTO_LOCK, SETTINGS_PROFILE, SETTINGS_AVATAR,
                SETTINGS_BLUETOOTH, SETTINGS_BLE_SCAN,
-               SETTINGS_LOCK_PIN, SETTINGS_PIN_ENTRY, SETTINGS_TEXT_EDIT, SETTINGS_SPECIAL,
+               SETTINGS_LOCK_PIN, SETTINGS_PIN_ENTRY, SETTINGS_TEXT_EDIT, SETTINGS_SPECIAL, SETTINGS_RAM_DIAG,
                SETTINGS_MONITOR } settings_page_t;
 static settings_page_t s_page;
 static bool s_monitor_url_shown;  // 监看地址是否已绘上屏（出现/消失触发重绘）/ whether the monitor address has been painted
@@ -402,9 +402,9 @@ static int settings_main_row_height(void) {
 }
 #define SETTINGS_ROW_H settings_main_row_height()
 #define SETTINGS_WIRELESS_ROWS 5
-#define SETTINGS_DISPLAY_ROWS 7
+#define SETTINGS_DISPLAY_ROWS 8
 #define SETTINGS_PERSONAL_ROWS 4
-#define SETTINGS_MAINTENANCE_ROWS 5
+#define SETTINGS_MAINTENANCE_ROWS 6
 #define SETTINGS_WIRELESS_Y (180 + settings_profile_height() + 77)
 #define SETTINGS_DISPLAY_Y (SETTINGS_WIRELESS_Y + SETTINGS_WIRELESS_ROWS * SETTINGS_ROW_H + 78)
 #define SETTINGS_PERSONAL_Y (SETTINGS_DISPLAY_Y + SETTINGS_DISPLAY_ROWS * SETTINGS_ROW_H + 78)
@@ -1509,6 +1509,30 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         ui_text(fb, 48, 620, 22, "请用 USB 连接电脑，再打开官网刷机页", EPD_DRAW_ALIGN_LEFT, false);
         settings_navigation(fb); return;
     }
+    if (s_page == SETTINGS_RAM_DIAG) {
+        back_header(fb, "内存诊断");
+        size_t inf = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        size_t inl = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+        size_t inm = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+        size_t spf = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        size_t spl = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+        size_t spm = heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM);
+        char l0[64], l1[64], l2[64], l3[64];
+        snprintf(l0, sizeof(l0), "空闲 %u KB", (unsigned)(inf / 1024));
+        snprintf(l1, sizeof(l1), "最大连续 %u KB · 历史最低 %u KB", (unsigned)(inl / 1024), (unsigned)(inm / 1024));
+        snprintf(l2, sizeof(l2), "空闲 %u KB", (unsigned)(spf / 1024));
+        snprintf(l3, sizeof(l3), "最大连续 %u KB · 历史最低 %u KB", (unsigned)(spl / 1024), (unsigned)(spm / 1024));
+        ui_text(fb, 60, 250, 27, "内部 SRAM（DIRAM）", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 60, 300, 23, l0, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 60, 340, 21, l1, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 60, 420, 27, "PSRAM", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 60, 470, 23, l2, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 60, 510, 21, l3, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 60, 620, 20, "内部 SRAM 是主要瓶颈；占用偏高时该页更易缺字或闪退。", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 60, 660, 20, "数值来自当前运行态，离开重进刷新。", EPD_DRAW_ALIGN_LEFT, false);
+        settings_navigation(fb);
+        return;
+    }
     if (s_page == SETTINGS_UPGRADE) {
         back_header(fb, "系统升级");
         settings_card(fb, (EpdRect){36, 202, 612, 120}, 22, UI_GRAY_WHITE, 0x70);
@@ -1754,11 +1778,12 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
     snprintf(contrast,sizeof(contrast),"%u%%",app_settings_system_contrast());
     unsigned minutes=app_settings_auto_lock_minutes();
     if(minutes)snprintf(idle,sizeof(idle),"%u 分钟",minutes);else strcpy(idle,"关闭");
-    const char *display_labels[]={"系统字体","系统对比度","主页刷新模式","首页强刷","自动休眠锁屏","双击解锁","关机睡眠"};
+    const char *display_labels[]={"系统字体","系统对比度","主页刷新模式","首页强刷","自动休眠锁屏","双击解锁","关机睡眠","自适应阅读方向"};
     const char *display_values[]={font_name,contrast,
         app_settings_main_refresh_mode()==APP_MAIN_REFRESH_FAST?"快刷":app_settings_main_refresh_mode()==APP_MAIN_REFRESH_WATER?"水波纹":"普通",
-        app_settings_home_full_refresh()?"开启":"关闭",idle,"",app_settings_staged_shutdown()?"先浅后深":"彻底断电"};
-    const int display_icons[]={2,7,15,11,14,SETTINGS_UNLOCK_ICON,9};
+        app_settings_home_full_refresh()?"开启":"关闭",idle,"",app_settings_staged_shutdown()?"先浅后深":"彻底断电",
+        app_settings_reader_adaptive()?"开启":"关闭"};
+    const int display_icons[]={2,7,15,11,14,SETTINGS_UNLOCK_ICON,9,15};
     setting_group(fb,SETTINGS_DISPLAY_Y-49,"显示",SETTINGS_DISPLAY_Y,
                   display_icons,display_labels,display_values,SETTINGS_DISPLAY_ROWS);
     snprintf(signature,sizeof(signature),"%s",app_settings_status_signature()[0]?app_settings_status_signature():"未设置");
@@ -1769,9 +1794,9 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
     const int personal_icons[]={4,5,16,10};
     setting_group(fb,SETTINGS_PERSONAL_Y-49,"个性化功能",SETTINGS_PERSONAL_Y,
                   personal_icons,personal_labels,personal_values,SETTINGS_PERSONAL_ROWS);
-    const char *maintenance_labels[]={"系统升级","保存与恢复","屏幕修复","BOOT 刷机","恢复出厂设置"};
-    const char *maintenance_values[]={"OTA / TF 卡","配置","清除条纹","电脑刷机","重置系统"};
-    const int maintenance_icons[]={12,8,17,13,11};
+    const char *maintenance_labels[]={"系统升级","保存与恢复","屏幕修复","BOOT 刷机","恢复出厂设置","内存诊断"};
+    const char *maintenance_values[]={"OTA / TF 卡","配置","清除条纹","电脑刷机","重置系统","RAM / PSRAM 峰值"};
+    const int maintenance_icons[]={12,8,17,13,11,15};
     setting_group(fb,SETTINGS_MAINTENANCE_Y-49,"升级和恢复",SETTINGS_MAINTENANCE_Y,
                   maintenance_icons,maintenance_labels,maintenance_values,SETTINGS_MAINTENANCE_ROWS);
     // 主列表也要有一行提示位：确认、修复结果都写在这里，不然点了没有任何回音。
@@ -2804,7 +2829,8 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         else if(row==3)app_settings_set_home_full_refresh(!app_settings_home_full_refresh());
         else if(row==4)s_page=SETTINGS_AUTO_LOCK;
         else if(row==5)app_settings_set_wake_presses(app_settings_wake_presses()==2?1:2);
-        else s_page=SETTINGS_POWER_SLEEP;
+        else if(row==6)s_page=SETTINGS_POWER_SLEEP;
+        else app_settings_set_reader_adaptive(!app_settings_reader_adaptive());
         return APP_REDRAW_PAGE;
     }
     if(y>=SETTINGS_PERSONAL_Y && y<SETTINGS_PERSONAL_Y+SETTINGS_PERSONAL_ROWS*SETTINGS_ROW_H) {
@@ -2830,6 +2856,7 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
             snprintf(s_notice,sizeof(s_notice),"屏幕修复中…");
             return APP_REDRAW_PAGE;
         }
+        else if(row==5) s_page=SETTINGS_RAM_DIAG;
         else {s_boot_pending=false;s_page=SETTINGS_BOOT;}
         return APP_REDRAW_PAGE;
     }

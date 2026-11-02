@@ -59,6 +59,8 @@ static bool home_full;
 static void ttf_font_scan(void){}
 static bool app_settings_home_full_refresh(void){return home_full;}
 static void app_settings_set_home_full_refresh(bool on){home_full=on;}
+static bool app_settings_reader_adaptive(void){return false;}
+static void app_settings_set_reader_adaptive(bool on){(void)on;}
 '''
 for name in ('settings_profile_height','settings_main_row_height'):
     unit+=function(name,ROOT/'main/apps/app_device_settings.c')+'\n'
@@ -144,7 +146,7 @@ int main(void){
  // A failed old-value read must not be mistaken for an absent legacy value.
  reload_wake(true,2,false,0,false,true);
  assert(app_settings_wake_presses()==1&&!writes&&!migration_writes);
- assert(SETTINGS_DISPLAY_ROWS==7);
+ assert(SETTINGS_DISPLAY_ROWS==8);
  const int top=SETTINGS_DISPLAY_Y+5*SETTINGS_ROW_H,scroll=500;
  assert(setting_tap(36,top-scroll,scroll)==APP_REDRAW_PAGE&&s_wake_presses==2&&s_page==SETTINGS_MAIN);
  assert(setting_tap(647,top+SETTINGS_ROW_H-1-scroll,scroll)==APP_REDRAW_PAGE&&s_wake_presses==1&&s_page==SETTINGS_MAIN);

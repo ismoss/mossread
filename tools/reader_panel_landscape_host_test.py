@@ -29,7 +29,8 @@ def function(name, text):
                 return text[start:i + 1]
     raise AssertionError(name)
 
-names = ('reader_panel_landscape', 'reader_ui_extra', 'reader_font_top', 'reader_font_card',
+names = ('reader_rot_is_landscape', 'reader_want_landscape',
+         'reader_panel_landscape', 'reader_ui_extra', 'reader_font_top', 'reader_font_card',
          'reader_slider_rect',
          'reading_setting_rect', 'reading_settings_top', 'reader_panel_footer_rect',
          'reader_weight_top', 'reader_weight_rect', 'reader_rule_top', 'rule_style_rect',
@@ -60,6 +61,10 @@ enum { SHELF, READING, TOC, READER_PANEL_NONE, READER_PANEL_TOOLS, READER_PANEL_
 static int s_view = READING, s_reader_panel;
 static const char *s_text = "t";
 static unsigned landscape_mode = 1;
+typedef enum EpdRotation { EPD_ROT_LANDSCAPE, EPD_ROT_PORTRAIT, EPD_ROT_INVERTED_LANDSCAPE,
+                           EPD_ROT_INVERTED_PORTRAIT } EpdRotation;
+static int s_orient_desired = EPD_ROT_INVERTED_PORTRAIT;
+static bool app_settings_reader_adaptive(void){return false;}
 static bool s_bookmark_edit;
 static unsigned font_scale = 100;
 static unsigned app_settings_reader_landscape(void){return landscape_mode;}

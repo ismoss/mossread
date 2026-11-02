@@ -85,6 +85,7 @@
 #define NVS_KEY_READER_KEYS_V2 "rd_keys_v2"
 #define NVS_KEY_VERTICAL_TURN "rd_vertical"
 #define NVS_KEY_READER_LANDSCAPE "rd_land"
+#define NVS_KEY_READER_ADAPTIVE "rd_adapt"
 #define NVS_KEY_BLE_TURNER "ble_turn"
 // 二改：后台自动重连已保存 WiFi 的总开关（默认开）。/ Mod: master switch for background WiFi auto-reconnect (default on).
 #define NVS_KEY_WIFI_AUTO "wifi_auto"
@@ -154,6 +155,9 @@ static bool s_reader_vertical_turn;
 // 书内横屏：0 竖屏，1/2 两个持机方向；只在阅读正文生效，书架与面板保持竖屏。
 // In-book landscape: 0 portrait, 1/2 the two holding directions; body only, shelf and panels stay portrait.
 static uint8_t s_reader_landscape;
+// 自适应阅读方向（重力决定横竖），与手动三档并存：开=自动，关=手动。
+// Adaptive reading direction (gravity decides orientation); off keeps the manual three stops.
+static bool s_reader_adaptive;
 static bool s_ble_turner;
 // 二改（mod27 默认关，mod29 继承旧默认）：`wifi_auto` 只有用户拨过开关才有键，所以"键存在"本身
 // 就是"用户做过选择"的证据。键缺失时由 app_main 在开机按旧默认判定一次并落盘：有已保存 WiFi
@@ -387,6 +391,9 @@ void app_settings_init(void) {
     uint8_t reader_landscape = 0;
     if (nvs_get_u8(h, NVS_KEY_READER_LANDSCAPE, &reader_landscape) == ESP_OK && reader_landscape <= 2)
         s_reader_landscape = reader_landscape;
+    uint8_t reader_adaptive = 0;
+    if (nvs_get_u8(h, NVS_KEY_READER_ADAPTIVE, &reader_adaptive) == ESP_OK)
+        s_reader_adaptive = reader_adaptive == 1;
     for (unsigned i = 0; i < 3; ++i) {
         uint8_t value;
         if (nvs_get_u8(h, s_reader_key_names[i], &value) == ESP_OK && value < APP_READER_KEY_COUNT)
@@ -862,6 +869,12 @@ void app_settings_set_reader_landscape(uint8_t mode) {
     if (mode > 2 || mode == s_reader_landscape) return;
     s_reader_landscape = mode;
     nvs_put_u8(NVS_KEY_READER_LANDSCAPE, mode);
+}
+bool app_settings_reader_adaptive(void) { return s_reader_adaptive; }
+void app_settings_set_reader_adaptive(bool on) {
+    if (s_reader_adaptive == on) return;
+    s_reader_adaptive = on;
+    nvs_put_u8(NVS_KEY_READER_ADAPTIVE, on ? 1 : 0);
 }
 bool app_settings_reader_power_turn(void) { return s_reader_power_turn; }
 void app_settings_set_reader_power_turn(bool on) {

@@ -164,6 +164,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "read_pico_init.h"
+#include "read_pico_board.h"
 #include "read_pico_sd.h"
 #include "read_pico_transfer.h"
 #include "read_pico_search.h"
@@ -574,11 +575,26 @@ static size_t fb_bytes(void) { return (size_t)epd_width() * epd_height() / 2; }
 // epd_set_rotation, so entering or leaving only swaps the rotation and re-anchors the layout.
 static EpdRect body_rect(void);
 static bool s_reader_landscape_layout;
+// 自适应阅读方向：重力决定正文横竖，只在阅读正文生效；与手动三档二选一（自适应开则忽略手动值）。
+// Adaptive reading direction: gravity drives the body, reader body only; mutually exclusive with the
+// manual stops (when adaptive is on the manual value is ignored).
+static int s_orient_desired = EPD_ROT_INVERTED_PORTRAIT;
+static int64_t s_orient_next_ms;
+static int s_orient_ref_x, s_orient_ref_y;
+static bool s_orient_ref_ready;
+static int s_orient_seen_idx = -1, s_orient_seen_n;
+static bool reader_rot_is_landscape(int rot) {
+    return rot == EPD_ROT_LANDSCAPE || rot == EPD_ROT_INVERTED_LANDSCAPE;
+}
+static bool reader_want_landscape(void) {
+    return app_settings_reader_adaptive() ? reader_rot_is_landscape(s_orient_desired)
+                                          : app_settings_reader_landscape() != 0;
+}
 // 横屏下与正文同向的二级面板：打开时不再转回竖屏，绘制与命中都直接用横屏视口几何。
 // Panels that share the body orientation in landscape: opening them keeps the rotation and
 // their paint/hit geometry uses the landscape viewport directly.
 static bool reader_panel_landscape(void) {
-    if (app_settings_reader_landscape() == 0 || !s_text || s_view != READING) return false;
+    if (!reader_want_landscape() || !s_text || s_view != READING) return false;
     switch (s_reader_panel) {
         case READER_PANEL_STATS:
         case READER_PANEL_CHAPTER_JUMP:
@@ -604,13 +620,14 @@ static bool reader_landscape_active(void) {
     // 目录与二级面板均已横屏化，与正文同向；工具条本来同向。
     // The TOC and the secondary panels are landscape-native and share the body orientation;
     // the toolbar always did.
-    return app_settings_reader_landscape() != 0 && s_text &&
+    return reader_want_landscape() && s_text &&
         (s_view == READING || s_view == TOC) &&
         (s_view == TOC || s_reader_panel == READER_PANEL_NONE || s_reader_panel == READER_PANEL_TOOLS ||
          reader_panel_landscape()) &&
         !s_clear_confirm;
 }
 static enum EpdRotation reader_rotation_now(void) {
+    if (app_settings_reader_adaptive()) return (enum EpdRotation)s_orient_desired;
     switch (app_settings_reader_landscape()) {
         case 1: return EPD_ROT_INVERTED_LANDSCAPE;
         case 2: return EPD_ROT_LANDSCAPE;
@@ -665,6 +682,45 @@ static void reader_rotation_leave(void) {
     // rebuilt on demand by sync afterwards.
     if (epd_get_rotation() != EPD_ROT_INVERTED_PORTRAIT)
         epd_set_rotation(EPD_ROT_INVERTED_PORTRAIT);
+}
+// 重力判定：参考向量在竖屏时跟踪重力，抵消加速度计的安装误差；限速 350ms、连续 3 拍一致才换向。
+// Gravity decision: the reference vector tracks gravity while portrait (cancels accelerometer mounting
+// error); 350 ms rate limit and three consistent samples before switching.
+static bool reader_orient_body(void) {
+    return app_settings_reader_adaptive() && s_view == READING && s_text && !s_clear_confirm;
+}
+static bool reader_orient_tick(app_ctx_t* ctx) {
+    if (!app_settings_reader_adaptive()) { s_orient_ref_ready = false; s_orient_seen_n = 0; return false; }
+    if (!reader_orient_body() || !ctx->sensor_ready || !ctx->acc) return false;
+    if (ctx->now_ms < s_orient_next_ms) return false;
+    s_orient_next_ms = ctx->now_ms + 350;
+    if (!sc7a20h_powered(ctx->acc)) (void)sc7a20h_power_up(ctx->acc);
+    sc7a20h_sample_t sample;
+    if (read_pico_accel_read(ctx->acc, &sample) != ESP_OK) return false;
+    const int gx = (int)sample.x_mg - READ_PICO_ACCEL_ZERO_X_MG;
+    const int gy = (int)sample.y_mg - READ_PICO_ACCEL_ZERO_Y_MG;
+    // 平放时平面内重力太小无法判向：保持现状。
+    // Laid flat the in-plane gravity is too small to resolve a direction; keep the current one.
+    if (gx * gx + gy * gy < 90000) { s_orient_seen_n = 0; return false; }
+    if (!s_orient_ref_ready) { s_orient_ref_x = gx; s_orient_ref_y = gy; s_orient_ref_ready = true; return false; }
+    const int p = gx * s_orient_ref_x + gy * s_orient_ref_y;
+    const int q = s_orient_ref_x * gy - s_orient_ref_y * gx;
+    const int ap = p < 0 ? -p : p, aq = q < 0 ? -q : q;
+    const int idx = ap > aq ? (p > 0 ? 0 : 1) : (q > 0 ? 2 : 3);
+    if (idx == 0) { s_orient_ref_x += (gx - s_orient_ref_x) / 8; s_orient_ref_y += (gy - s_orient_ref_y) / 8; }
+    // 仅支持 竖屏 ↔ 横屏左/右；180° 倒置竖屏按竖屏处理（触摸映射未覆盖 180°）。
+    // Only portrait <-> landscape L/R; 180-degree portrait is treated as portrait (touch mapping
+    // does not cover 180 degrees).
+    const int want = idx == 2 ? EPD_ROT_INVERTED_LANDSCAPE : idx == 3 ? EPD_ROT_LANDSCAPE
+                                                                     : EPD_ROT_INVERTED_PORTRAIT;
+    if (want != s_orient_desired) {
+        if (idx != s_orient_seen_idx) { s_orient_seen_idx = idx; s_orient_seen_n = 0; }
+        if (++s_orient_seen_n < 3) return false;
+        s_orient_seen_n = 0;
+        s_orient_desired = want;
+        return true;
+    }
+    return false;
 }
 // 触摸芯片坐标系与竖屏逻辑一致；横屏正文里把报点换算到横屏逻辑，并同步重映射滑动方向。
 // Touch reports portrait-logical coordinates; inside landscape they map to the landscape grid
@@ -1399,7 +1455,8 @@ static void search_begin(void) {
 }
 static void refresh_search_matches(void) {
     for (int i = 0; i < s_count; ++i)
-        s_shelf[i].search_match = read_pico_search_match(s_shelf[i].name, s_query);
+        s_shelf[i].search_match = read_pico_search_match(s_shelf[i].name, s_query) &&
+                                  shelf_category_matches(s_shelf[i].path);
 }
 static void search_finish(app_ctx_t* ctx, bool apply) {
     ui_keyboard_end();
@@ -3262,7 +3319,8 @@ static void draw_reader_panel(uint8_t* fb) {
                 // 标签写目标档而不是当前档：点一下就到写的方向。
                 // The label names the destination, not the current stop.
                 uint8_t next = (app_settings_reader_landscape() + 1) % 3;
-                snprintf(label, sizeof(label), "%s", next == 0 ? "竖屏" : next == 1 ? "横屏·右" : "横屏·左");
+                snprintf(label, sizeof(label), "%s", app_settings_reader_adaptive() ? "锁定"
+                    : next == 0 ? "竖屏" : next == 1 ? "横屏·右" : "横屏·左");
             } else snprintf(label, sizeof(label), "%s", bookmarked ? "已书签" : labels[i]);
             ui_text_box(fb,(EpdRect){rect.x+6,top+63,rect.width-12,40},20,label,EPD_DRAW_ALIGN_CENTER,false);
         }
@@ -6369,9 +6427,15 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
             } else if (i == 3) {
                 s_reader_panel = READER_PANEL_REFRESH_SETTINGS;
             } else if (i == BOOK_TOOL_LANDSCAPE) {
-                // 三档循环：竖屏→横屏右→横屏左；换档后关工具条直接回到正文。
-                // Cycle portrait→right→left; the new stop applies to the body immediately.
-                app_settings_set_reader_landscape((app_settings_reader_landscape() + 1) % 3);
+                // 自适应开启时：这一键把当前方向锁成手动（之后不再自动翻），否则三档循环。
+                // With adaptive on, this key locks the current orientation to manual; otherwise it cycles.
+                if (app_settings_reader_adaptive()) {
+                    bool was_landscape = reader_want_landscape();
+                    app_settings_set_reader_adaptive(false);
+                    app_settings_set_reader_landscape(was_landscape ? 1 : 0);
+                } else {
+                    app_settings_set_reader_landscape((app_settings_reader_landscape() + 1) % 3);
+                }
                 s_reader_panel = READER_PANEL_NONE;
             } else {
                 s_line_spacing = app_settings_book_line_spacing();
@@ -8101,6 +8165,10 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     app_redraw_t recovery = reader_font_recovery_tick(ctx);
     if (recovery != APP_REDRAW_NONE) return recovery;
     if (s_reader_panel == READER_PANEL_FONT_RECOVERY) return APP_REDRAW_NONE;
+    // 自适应方向每轮采样；换向则整页重绘，present 的方向对账会完成重排。
+    // Sample adaptive orientation each tick; on a switch request a full redraw, the present-time
+    // rotation reconcile performs the re-layout.
+    if (reader_orient_tick(ctx)) return APP_REDRAW_FULL;
 
     app_redraw_t indent=reader_indent_hold_tick(ctx);
     if(indent!=APP_REDRAW_NONE)return indent;
