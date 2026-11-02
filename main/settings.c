@@ -86,6 +86,8 @@
 #define NVS_KEY_VERTICAL_TURN "rd_vertical"
 #define NVS_KEY_READER_LANDSCAPE "rd_land"
 #define NVS_KEY_READER_ADAPTIVE "rd_adapt"
+#define NVS_KEY_READER_ORIENT_LOCK "rd_olock"
+#define NVS_KEY_READER_ORIENT_LOCK_ROT "rd_olock_rot"
 #define NVS_KEY_BLE_TURNER "ble_turn"
 // 二改：后台自动重连已保存 WiFi 的总开关（默认开）。/ Mod: master switch for background WiFi auto-reconnect (default on).
 #define NVS_KEY_WIFI_AUTO "wifi_auto"
@@ -158,6 +160,10 @@ static uint8_t s_reader_landscape;
 // 自适应阅读方向（重力决定横竖），与手动三档并存：开=自动，关=手动。
 // Adaptive reading direction (gravity decides orientation); off keeps the manual three stops.
 static bool s_reader_adaptive;
+// 自适应方向的"锁定"状态与锁定时的旋转；持久化以跨锁屏/深睡。
+// Adaptive-direction lock flag and the rotation it froze; persisted across lock/deep sleep.
+static bool s_reader_orient_lock;
+static uint8_t s_reader_orient_lock_rot;
 static bool s_ble_turner;
 // 二改（mod27 默认关，mod29 继承旧默认）：`wifi_auto` 只有用户拨过开关才有键，所以"键存在"本身
 // 就是"用户做过选择"的证据。键缺失时由 app_main 在开机按旧默认判定一次并落盘：有已保存 WiFi
@@ -394,6 +400,11 @@ void app_settings_init(void) {
     uint8_t reader_adaptive = 0;
     if (nvs_get_u8(h, NVS_KEY_READER_ADAPTIVE, &reader_adaptive) == ESP_OK)
         s_reader_adaptive = reader_adaptive == 1;
+    uint8_t orient_lock = 0, orient_lock_rot = 0;
+    if (nvs_get_u8(h, NVS_KEY_READER_ORIENT_LOCK, &orient_lock) == ESP_OK)
+        s_reader_orient_lock = orient_lock == 1;
+    if (nvs_get_u8(h, NVS_KEY_READER_ORIENT_LOCK_ROT, &orient_lock_rot) == ESP_OK && orient_lock_rot <= 3)
+        s_reader_orient_lock_rot = orient_lock_rot;
     for (unsigned i = 0; i < 3; ++i) {
         uint8_t value;
         if (nvs_get_u8(h, s_reader_key_names[i], &value) == ESP_OK && value < APP_READER_KEY_COUNT)
@@ -875,6 +886,18 @@ void app_settings_set_reader_adaptive(bool on) {
     if (s_reader_adaptive == on) return;
     s_reader_adaptive = on;
     nvs_put_u8(NVS_KEY_READER_ADAPTIVE, on ? 1 : 0);
+}
+bool app_settings_reader_orient_lock(void) { return s_reader_orient_lock; }
+void app_settings_set_reader_orient_lock(bool on) {
+    if (s_reader_orient_lock == on) return;
+    s_reader_orient_lock = on;
+    nvs_put_u8(NVS_KEY_READER_ORIENT_LOCK, on ? 1 : 0);
+}
+uint8_t app_settings_reader_orient_lock_rot(void) { return s_reader_orient_lock_rot; }
+void app_settings_set_reader_orient_lock_rot(uint8_t rot) {
+    if (rot > 3 || rot == s_reader_orient_lock_rot) return;
+    s_reader_orient_lock_rot = rot;
+    nvs_put_u8(NVS_KEY_READER_ORIENT_LOCK_ROT, rot);
 }
 bool app_settings_reader_power_turn(void) { return s_reader_power_turn; }
 void app_settings_set_reader_power_turn(bool on) {

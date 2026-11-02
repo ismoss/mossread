@@ -726,11 +726,28 @@ static bool reader_orient_tick(app_ctx_t* ctx) {
         s_orient_prev_adaptive = app_settings_reader_adaptive();
         s_orient_seen_n = 0;
         s_orient_seen_idx = -1;
-        if (s_orient_prev_adaptive) s_orient_fresh = true;  // 开启：首帧立即按当前姿态定向
-        else s_orient_locked = false;                       // 关闭：保持当前，清锁定
+        if (s_orient_prev_adaptive) {
+            if (app_settings_reader_orient_lock()) {
+                // 跨锁屏/深睡：恢复"锁定"和锁定时冻结的方向。
+                s_orient_locked = true;
+                s_orient_desired = app_settings_reader_orient_lock_rot();
+                s_orient_fresh = false;
+            } else {
+                s_orient_locked = false;
+                s_orient_fresh = true;
+            }
+        } else {
+            s_orient_locked = false;
+            app_settings_set_reader_orient_lock(false);
+        }
     }
     if (!app_settings_reader_adaptive()) return false;
-    if (s_orient_locked) return false;
+    if (s_orient_locked) {
+        // 锁定期间保持冻结方向（含深睡恢复后）。
+        if (reader_orient_body() && s_reader_layout_rot != s_orient_desired)
+            reader_apply_rotation(s_orient_desired);
+        return false;
+    }
     if (!reader_orient_body() || !ctx->sensor_ready || !ctx->acc) return false;
     if (ctx->now_ms < s_orient_next_ms) return false;
     s_orient_next_ms = ctx->now_ms + (s_orient_fresh ? 0 : 300);
@@ -6503,6 +6520,9 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 // Adaptive on: toggle lock; off: cycle the three manual stops.
                 if (app_settings_reader_adaptive()) {
                     s_orient_locked = !s_orient_locked;
+                    app_settings_set_reader_orient_lock(s_orient_locked);
+                    if (s_orient_locked)
+                        app_settings_set_reader_orient_lock_rot((uint8_t)s_reader_layout_rot);
                 } else {
                     reader_apply_rotation(reader_manual_next_rot());
                 }

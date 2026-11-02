@@ -158,6 +158,10 @@ void app_settings_set_reader_landscape(uint8_t mode);
 /// 自适应阅读方向：开=重力自动横竖，关=手动三档；默认关。/ Adaptive gravity orientation; off by default.
 bool app_settings_reader_adaptive(void);
 void app_settings_set_reader_adaptive(bool on);
+bool app_settings_reader_orient_lock(void);
+void app_settings_set_reader_orient_lock(bool on);
+uint8_t app_settings_reader_orient_lock_rot(void);
+void app_settings_set_reader_orient_lock_rot(uint8_t rot);
 /// 阅读正文里短按电源键翻下一页；默认关闭。/ Short power press turns forward only in reader body; off by default.
 bool app_settings_reader_power_turn(void);
 void app_settings_set_reader_power_turn(bool on);
