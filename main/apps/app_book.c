@@ -585,39 +585,15 @@ static int s_reader_layout_rot = EPD_ROT_INVERTED_PORTRAIT;
 // mutually exclusive with the manual stops.
 static int s_orient_desired = EPD_ROT_INVERTED_PORTRAIT;
 static int64_t s_orient_next_ms;
-static int s_orient_ref_x, s_orient_ref_y;
-static bool s_orient_ref_ready;
-static bool s_orient_calibrate;
 static bool s_orient_prev_adaptive;
 static bool s_orient_locked;
+static bool s_orient_fresh;   // 刚开启自适应：第一帧有效采样立即定向
 static int s_orient_seen_idx = -1, s_orient_seen_n;
 static bool reader_rot_is_landscape(int rot) {
     return rot == EPD_ROT_LANDSCAPE || rot == EPD_ROT_INVERTED_LANDSCAPE;
 }
-// 校准时的"当前方向"基准；自动换向按相对角度算，横着开启也不会跳屏。
-// Baseline rotation captured at calibration; auto turns are relative so enabling in landscape never jumps.
-static int s_orient_base_rot = EPD_ROT_INVERTED_PORTRAIT;
-// 旋转值 ↔ 角度（工厂竖屏 0°，横 90°，180°，270°）。
-// Rotation value <-> degrees (factory portrait 0°, landscape 90°, 180°, 270°).
-static int rot_deg(int rot) {
-    switch (rot) {
-        case EPD_ROT_LANDSCAPE: return 90;
-        case EPD_ROT_PORTRAIT: return 180;
-        case EPD_ROT_INVERTED_LANDSCAPE: return 270;
-        default: return 0;  // EPD_ROT_INVERTED_PORTRAIT
-    }
-}
-static int rot_from_deg(int deg) {
-    deg = ((deg % 360) + 360) % 360;
-    switch (deg) {
-        case 90: return EPD_ROT_LANDSCAPE;
-        case 180: return EPD_ROT_PORTRAIT;
-        case 270: return EPD_ROT_INVERTED_LANDSCAPE;
-        default: return EPD_ROT_INVERTED_PORTRAIT;
-    }
-}
-// 期望旋转：自适应看重力判定，否则看手动三档。
-// Desired rotation: gravity when adaptive, otherwise the manual three stops.
+// 期望旋转：自适应看绝对姿态，否则保持当前方向。
+// Desired rotation: absolute orientation when adaptive, otherwise keep the current one.
 static int reader_want_rotation(void) {
     if (app_settings_reader_adaptive()) return s_orient_desired;
     // 关自适应：保持当前方向不动（含 180°），只有工具栏三档才显式切。
@@ -749,65 +725,45 @@ static bool reader_orient_body(void) {
 static bool reader_orient_tick(app_ctx_t* ctx) {
     if (app_settings_reader_adaptive() != s_orient_prev_adaptive) {
         s_orient_prev_adaptive = app_settings_reader_adaptive();
-        s_orient_ref_ready = false;
         s_orient_seen_n = 0;
-        s_orient_locked = false;
-        if (s_orient_prev_adaptive) {
-            // 开启：以"当前方向"为基准校准，不做跳转（横着开启也不会跳/校准错）。
-            // Enabling: calibrate relative to the current rotation; no jump even if opened in landscape.
-            s_orient_base_rot = s_reader_layout_rot;
-            s_orient_desired = s_reader_layout_rot;
-            s_orient_calibrate = true;
-        } else {
-            // 关闭：保持当前方向不动（sync 关态直接读当前布局）；清校准状态。
-            // Disabling: keep the current rotation untouched (sync reads the live layout when off).
-            s_orient_calibrate = false;
-        }
+        s_orient_seen_idx = -1;
+        if (s_orient_prev_adaptive) s_orient_fresh = true;  // 开启：首帧立即按当前姿态定向
+        else s_orient_locked = false;                       // 关闭：保持当前，清锁定
     }
     if (!app_settings_reader_adaptive()) return false;
-    // 锁定期间冻结自动换向，直到用户取消锁定。/ Freeze auto-rotation while locked.
     if (s_orient_locked) return false;
     if (!reader_orient_body() || !ctx->sensor_ready || !ctx->acc) return false;
     if (ctx->now_ms < s_orient_next_ms) return false;
-    s_orient_next_ms = ctx->now_ms + 350;
+    s_orient_next_ms = ctx->now_ms + (s_orient_fresh ? 0 : 300);
     if (!sc7a20h_powered(ctx->acc)) (void)sc7a20h_power_up(ctx->acc);
     sc7a20h_sample_t sample;
     if (read_pico_accel_read(ctx->acc, &sample) != ESP_OK) return false;
     const int gx = (int)sample.x_mg - READ_PICO_ACCEL_ZERO_X_MG;
     const int gy = (int)sample.y_mg - READ_PICO_ACCEL_ZERO_Y_MG;
-    if (s_orient_calibrate) {
-        // 平放时无法校准，继续等下一次采样（不丢弃校准请求，修"开机默认自适应但换向没反应"）。
-        // Flat cannot calibrate: keep waiting (don't drop the request) so a boot with adaptive on
-        // still calibrates the first time the device is picked up.
-        if (gx * gx + gy * gy >= 90000) {
-            s_orient_base_rot = s_reader_layout_rot;  // 以当前显示方向为基准
-            s_orient_desired = s_reader_layout_rot;
-            s_orient_ref_x = gx; s_orient_ref_y = gy; s_orient_ref_ready = true;
-            s_orient_seen_idx = -1; s_orient_seen_n = 0;
-            s_orient_calibrate = false;
-        }
+    const int ax = gx < 0 ? -gx : gx, ay = gy < 0 ? -gy : gy;
+    // 平放（平面内重力太小）无法判向：保持现状，等设备立起来。
+    // Flat cannot resolve a direction; keep the current one until the device is upright.
+    if (ax < 300 && ay < 300) return false;
+    // 绝对方向：长轴竖直=竖屏/180°，短轴竖直=两个横屏；无需校准，开启首帧即可定向。
+    // Absolute: long axis vertical = portrait/180°, short axis vertical = landscapes; no calibration.
+    int want;
+    if (ay >= ax) want = gy > 0 ? EPD_ROT_INVERTED_PORTRAIT : EPD_ROT_PORTRAIT;
+    else          want = gx > 0 ? EPD_ROT_INVERTED_LANDSCAPE : EPD_ROT_LANDSCAPE;
+    if (s_orient_fresh) {
+        // 开启后第一帧有效采样立即定向（不必等去抖）。
+        s_orient_fresh = false;
+        s_orient_seen_n = 0;
+        if (want != s_orient_desired) { s_orient_desired = want; return true; }
         return false;
     }
-    // 平放时平面内重力太小无法判向：保持现状。
-    // Laid flat the in-plane gravity is too small to resolve a direction; keep the current one.
-    if (gx * gx + gy * gy < 90000) { s_orient_seen_n = 0; return false; }
-    if (!s_orient_ref_ready) return false;
-    const int p = gx * s_orient_ref_x + gy * s_orient_ref_y;
-    const int q = s_orient_ref_x * gy - s_orient_ref_y * gx;
-    const int ap = p < 0 ? -p : p, aq = q < 0 ? -q : q;
-    const int idx = ap > aq ? (p > 0 ? 0 : 1) : (q > 0 ? 2 : 3);
-    if (idx == 0) { s_orient_ref_x += (gx - s_orient_ref_x) / 8; s_orient_ref_y += (gy - s_orient_ref_y) / 8; }
-    // 相对基准方向转：idx0 不变、idx1 转 180°、idx2/idx3 各转 90°（横屏对调按真机实测）。
-    // Relative to the baseline: idx0 none, idx1 180°, idx2/idx3 ±90° (landscape pair per device test).
-    static const int turn_deg[4] = {0, 180, -90, 90};
-    const int want = rot_from_deg(rot_deg(s_orient_base_rot) + turn_deg[idx]);
     if (want != s_orient_desired) {
-        if (idx != s_orient_seen_idx) { s_orient_seen_idx = idx; s_orient_seen_n = 0; }
-        if (++s_orient_seen_n < 3) return false;
+        if (want != s_orient_seen_idx) { s_orient_seen_idx = want; s_orient_seen_n = 0; }
+        if (++s_orient_seen_n < 2) return false;
         s_orient_seen_n = 0;
         s_orient_desired = want;
         return true;
     }
+    s_orient_seen_n = 0;
     return false;
 }
 // 触摸芯片坐标系与竖屏逻辑一致；横屏正文里把报点换算到横屏逻辑，并同步重映射滑动方向。
