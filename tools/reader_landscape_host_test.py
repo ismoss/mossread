@@ -119,13 +119,13 @@ int main(void){
  assert(build_calls==1&&s_reader_landscape_layout&&s_rotation==EPD_ROT_INVERTED_LANDSCAPE);
  // 同族横屏对调只换旋转，不重排。
  reader_apply_rotation(EPD_ROT_LANDSCAPE);
- assert(build_calls==1&&s_rotation==EPD_ROT_LANDSCAPE);
+ assert(build_calls==2&&s_rotation==EPD_ROT_LANDSCAPE);
  // 关态 sync 保持横屏（面板同向也不回落）。
  s_reader_panel=READER_PANEL_STATS;reader_sync_rotation();
- assert(s_reader_landscape_layout&&s_rotation==EPD_ROT_LANDSCAPE&&build_calls==1);
+ assert(s_reader_landscape_layout&&s_rotation==EPD_ROT_LANDSCAPE&&build_calls==2);
  // 回竖屏。
  reader_apply_rotation(EPD_ROT_INVERTED_PORTRAIT);
- assert(build_calls==2&&!s_reader_landscape_layout&&s_rotation==EPD_ROT_INVERTED_PORTRAIT);
+ assert(build_calls==3&&!s_reader_landscape_layout&&s_rotation==EPD_ROT_INVERTED_PORTRAIT);
  // 无书/非正文：sync 回竖屏（竖屏同族不重排）。
  s_text=NULL;reader_sync_rotation();
  assert(!s_reader_landscape_layout&&s_rotation==EPD_ROT_INVERTED_PORTRAIT);
