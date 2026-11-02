@@ -49,6 +49,7 @@ static int s_category_count,s_category_capacity,s_category_selected,s_category_m
 static char s_category_root[288];
 static int s_view=SHELF;
 static bool s_scan_pending,s_shelf_cache_valid,s_recent_sort;
+static char s_query[65];
 static int s_count,s_visible_count,s_filter;
 typedef struct{char path[288],name[256];bool removed,search_match,is_flash,favorite;uint32_t recent;}shelf_entry_t;
 static shelf_entry_t s_shelf[40];
