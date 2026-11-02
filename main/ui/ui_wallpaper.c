@@ -225,7 +225,9 @@ void ui_wallpaper_draw_avatar(uint8_t *fb, const uint8_t *pixels, EpdRect area, 
 #define WALL_LOCK_CACHE UI_WALLPAPER_CACHE_PARENT "/locks/wallpaper.bin"
 #define WALL_LOCK_BYTES (684u*1216u/2u)
 #define WALL_LOCK_MAGIC UINT32_C(0x574c4b31)
-#define WALL_LOCK_VERSION 3u
+// 4：锁屏绘制改为"按画布朝向旋转"，旧缓存是按裁切算的，必须作废。
+// 4: the lock path now rotates to the canvas orientation; old centre-cropped caches must be dropped.
+#define WALL_LOCK_VERSION 4u
 // 只缓存最终16级抖动画布到卡；借用锁屏画布，不常驻第二份整帧。
 // Persist final 16-level dithered art on SD, borrowing the lock canvas instead of retaining another frame.
 typedef struct {
@@ -244,6 +246,14 @@ static uint64_t wallpaper_key(const char *path,const struct stat *st) {
     int64_t size=st->st_size,modified=st->st_mtime;
     h=wallpaper_hash(h,&size,sizeof(size));
     return wallpaper_hash(h,&modified,sizeof(modified));
+}
+// 源图朝向与画布不一致时旋转 90° 再铺满：竖屏槽放横图、横屏槽放竖图都走这条路，两槽行为一致。
+// Rotate 90° when the source orientation differs from the canvas, so a landscape image in the
+// portrait slot and a portrait image in the landscape slot both fill the frame instead of being
+// centre-cropped into a single strip.
+static bool wallpaper_rotate_for_canvas(const char *path) {
+    bool canvas_landscape = epd_rotated_display_width() > epd_rotated_display_height();
+    return canvas_landscape != ui_wallpaper_source_is_landscape(path);
 }
 bool ui_wallpaper_prepare_lock(uint8_t *fb,const char *path) {
     s_wall_pending_fb=NULL;
@@ -264,7 +274,9 @@ bool ui_wallpaper_prepare_lock(uint8_t *fb,const char *path) {
         if (good) return true;
     }
     EpdRect full = {0, 0, epd_rotated_display_width(), epd_rotated_display_height()};
-    if (!image_pixels(fb, NULL, path, full, 0)) return false;
+    bool rotate = wallpaper_rotate_for_canvas(path);
+    if (rotate ? !ui_wallpaper_draw_rotated(fb, path, full) : !image_pixels(fb, NULL, path, full, 0))
+        return false;
     struct stat after;
     if (!stat(path,&after) && after.st_size==st.st_size && after.st_mtime==st.st_mtime) {
         s_wall_pending=wanted; s_wall_pending_fb=fb;

@@ -30,9 +30,11 @@
 #endif
 #define LOCK_ART_PATH LOCK_SCREEN_CACHE_PARENT "/locks/pin-background.bin"
 // 旧缓存可能保存了临时圆锁；透明书封的合成/边界算法也已变化，代号必须再次作废旧图。
+// 壁纸锁屏改为"按画布朝向旋转"后，旧的裁切脸图也要作废。
 // Old caches may contain temporary badges; the transparent-cover compositing/bounds changed too,
-// so this generation must invalidate the older artwork again.
-#define ART_MAGIC UINT32_C(0x50414436)
+// so this generation must invalidate the older artwork again. The wallpaper lock now rotates to the
+// canvas orientation, so the old centre-cropped face frames must go too.
+#define ART_MAGIC UINT32_C(0x50414437)
 typedef struct {uint32_t magic,rotation,style,checksum;uint64_t wallpaper;} art_header_t;
 static uint32_t checksum(const uint8_t *bytes){uint32_t h=2166136261u;for(unsigned i=0;i<FRAME_BYTES;++i)h=(h^bytes[i])*16777619u;return h;}
 static uint64_t wallpaper_key(void){

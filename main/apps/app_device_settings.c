@@ -495,19 +495,21 @@ static void preview_cache_drop(void) {
     free(s_preview_px); s_preview_px = NULL; s_preview_key[0] = 0;
     s_preview_rect = (EpdRect){0};
 }
-static bool preview_cache_load(const char *path, EpdRect box) {
+static bool preview_cache_load(const char *path, EpdRect box, bool target_landscape) {
     char key[320];
     struct stat st = {0};
     (void)stat(path, &st);
-    snprintf(key, sizeof(key), "%s|%lld|%d|%d", path, (long long)st.st_mtime, box.width, box.height);
+    snprintf(key, sizeof(key), "%s|%lld|%d|%d|%d", path, (long long)st.st_mtime, box.width, box.height,
+             target_landscape ? 1 : 0);
     if (s_preview_px && !strcmp(key, s_preview_key)) return true;
     preview_cache_drop();
     size_t pixels = (size_t)box.width * box.height;
     uint8_t *px = heap_caps_malloc(pixels, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!px) return false;
-    // 横屏槽：横图转 90° 显示在这块竖屏区域里（就像横屏看书，范围更大）。
-    // Landscape slot: a wide image is shown sideways inside the tall area, like landscape reading.
-    const bool sideways = box.width < box.height && ui_wallpaper_source_is_landscape(path);
+    // 预览与锁屏同一规则：源图朝向与目标画布不一致就转 90°，竖/横槽都按最终画面预览。
+    // Same rule as the lock: rotate 90° when the source orientation differs from the target
+    // canvas, so the preview matches what the slot will actually show.
+    const bool sideways = target_landscape != ui_wallpaper_source_is_landscape(path);
     if (!ui_wallpaper_fit_pixels(path, box, px, &s_preview_rect, sideways)) { free(px); return false; }
     s_preview_px = px;
     snprintf(s_preview_key, sizeof(s_preview_key), "%s", key);
@@ -1320,7 +1322,7 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
             ui_text_vc(fb, 342, image.y + image.height / 2, 23, "正在加载预览…", EPD_DRAW_ALIGN_CENTER, false);
         } else if (s_wallpaper_selected >= 0 && s_wallpaper_selected < s_wallpaper_count) {
             if (s_bookmark_picker) s_wallpaper_preview_ok = s_bookmark_preview != NULL;
-            else if (preview_cache_load(s_wallpapers[s_wallpaper_selected].path, image)) {
+            else if (preview_cache_load(s_wallpapers[s_wallpaper_selected].path, image, s_wallpaper_land)) {
                 ui_wallpaper_blit(fb, s_preview_rect, s_preview_px);
                 s_wallpaper_preview_ok = true;
             } else {
@@ -1925,7 +1927,7 @@ static app_redraw_t on_tick(app_ctx_t *ctx) {
     if (s_page == SETTINGS_WALLPAPER_PREVIEW && s_preview_loading) {
         EpdRect image = {166, 194, 352, 626};
         if (!s_bookmark_picker && s_wallpaper_selected >= 0 && s_wallpaper_selected < s_wallpaper_count)
-            (void)preview_cache_load(s_wallpapers[s_wallpaper_selected].path, image);
+            (void)preview_cache_load(s_wallpapers[s_wallpaper_selected].path, image, s_wallpaper_land);
         s_preview_loading = false;
         return APP_REDRAW_PAGE;
     }
