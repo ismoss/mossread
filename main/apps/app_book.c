@@ -2764,7 +2764,10 @@ static void draw_turn_settings(uint8_t *fb) {
         epd_draw_circle(card.x + card.width - 38, y + 61, 12, 0x38, fb);
         if (selected) epd_fill_circle(card.x + card.width - 38, y + 61, 7, UI_GRAY_BLACK, fb);
     }
-    reader_panel_text_vc(fb, w / 2, top + 465, 21, "中间区域双击切换全屏 · 始终可用", EPD_DRAW_ALIGN_CENTER, false);
+    // 横屏提示贴两卡下方；竖屏保持原固定位置，避免落到第二张卡上压住标题。
+    // Landscape puts the hint below the side-by-side cards; portrait keeps its original fixed
+    // slot so it no longer lands on the second card and overlaps its title.
+    reader_panel_text_vc(fb, w / 2, wide ? top + 465 : 1051, 21, "中间区域双击切换全屏 · 始终可用", EPD_DRAW_ALIGN_CENTER, false);
     EpdRect footer = reader_panel_footer_rect();
     ui_fill_round_rect(fb, footer, 20, UI_GRAY_BLACK);
     reader_panel_text_vc(fb, footer.x + footer.width / 2, footer.y + footer.height / 2, 26, "完成", EPD_DRAW_ALIGN_CENTER, true);
