@@ -41,7 +41,10 @@ static const char *s_text;
 static bool s_clear_confirm;
 static int build_calls;
 static unsigned landscape_mode;
+#define UI_LOCK_WIDTH 684
+#define UI_LOCK_HEIGHT 1216
 static int s_orient_desired = EPD_ROT_INVERTED_PORTRAIT;
+static int s_reader_layout_rot = EPD_ROT_INVERTED_PORTRAIT;
 static bool app_settings_reader_adaptive(void){return false;}
 static int reader_w(void){return s_reader_landscape_layout?epd_width():684;}
 static int reader_h(void){return s_reader_landscape_layout?epd_height():1216;}
@@ -68,8 +71,8 @@ enum { READING, SHELF, TOC, READER_PANEL_NONE, READER_PANEL_TOOLS, READER_PANEL_
        READER_PANEL_FONT_PICKER, READER_PANEL_BOOKMARKS, READER_PANEL_BACKGROUND,
        READER_PANEL_BACKGROUND_PREVIEW, READER_PANEL_KEY_PICKER, READER_PANEL_FONT_RECOVERY };
 '''
-for name in ('reader_rot_is_landscape', 'reader_want_landscape',
-             'reader_panel_landscape', 'reader_landscape_active', 'reader_rotation_now',
+for name in ('reader_rot_is_landscape', 'reader_want_rotation', 'reader_want_landscape',
+             'reader_panel_landscape', 'reader_rotation_now',
              'reader_relayout_keep_page', 'reader_sync_rotation', 'reader_touch_to_landscape',
              'reader_gesture_to_landscape'):
     unit += function(name, book) + '\n'

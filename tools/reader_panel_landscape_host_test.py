@@ -29,7 +29,7 @@ def function(name, text):
                 return text[start:i + 1]
     raise AssertionError(name)
 
-names = ('reader_rot_is_landscape', 'reader_want_landscape',
+names = ('reader_rot_is_landscape', 'reader_want_rotation', 'reader_want_landscape',
          'reader_panel_landscape', 'reader_ui_extra', 'reader_font_top', 'reader_font_card',
          'reader_slider_rect',
          'reading_setting_rect', 'reading_settings_top', 'reader_panel_footer_rect',
