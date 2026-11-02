@@ -198,14 +198,14 @@ int main(void){
  draw_upgrade_notes(NULL);assert(note_count==6&&!strcmp(note_lines[0],"1. 优化图文混排")&&!strcmp(note_lines[5],"6. 优化文件管理排版"));
  note_count=0;s_update.release.notes[0]=0;draw_upgrade_notes(NULL);assert(note_count==1&&!strcmp(note_lines[0],"本次更新暂无说明"));
  const char *cursor="\n\r;；  一；二;三\n四";char line[384];
- for(int i=0;i<4;++i){assert(upgrade_note_line(&cursor,line,sizeof(line)));assert(strlen(line)==3);}
- assert(!upgrade_note_line(&cursor,line,sizeof(line)));
+ for(int i=0;i<4;++i){assert(upgrade_note_line(&cursor,line,sizeof(line),26,540));assert(strlen(line)==3);}
+ assert(!upgrade_note_line(&cursor,line,sizeof(line),26,540));
  cursor="中文😀AB";char short_line[5];
- assert(upgrade_note_line(&cursor,short_line,sizeof(short_line))&&!strcmp(short_line,"中"));
- assert(upgrade_note_line(&cursor,short_line,sizeof(short_line))&&!strcmp(short_line,"文"));
- assert(upgrade_note_line(&cursor,short_line,sizeof(short_line))&&!strcmp(short_line,"😀"));
- assert(upgrade_note_line(&cursor,short_line,sizeof(short_line))&&!strcmp(short_line,"AB"));
- cursor="中";assert(!upgrade_note_line(&cursor,line,1));
+ assert(upgrade_note_line(&cursor,short_line,sizeof(short_line),26,540)&&!strcmp(short_line,"中"));
+ assert(upgrade_note_line(&cursor,short_line,sizeof(short_line),26,540)&&!strcmp(short_line,"文"));
+ assert(upgrade_note_line(&cursor,short_line,sizeof(short_line),26,540)&&!strcmp(short_line,"😀"));
+ assert(upgrade_note_line(&cursor,short_line,sizeof(short_line),26,540)&&!strcmp(short_line,"AB"));
+ cursor="中";assert(!upgrade_note_line(&cursor,line,1,26,540));
  note_count=0;memset(s_update.release.notes,'A',sizeof(s_update.release.notes)-1);s_update.release.notes[sizeof(s_update.release.notes)-1]=0;
  draw_upgrade_notes(NULL);assert(note_count==6&&strstr(note_lines[5],"…"));
  EpdRect online_yes=upgrade_confirm_button(true,true),online_no=upgrade_confirm_button(true,false);

@@ -330,9 +330,11 @@ static app_redraw_t upgrade_start_pending(app_ctx_t *ctx) {
     snprintf(s_upgrade_notice, sizeof(s_upgrade_notice), "%s", s_update.message);
     return APP_REDRAW_PAGE;
 }
-// 日志按 UTF-8 字符和实际字宽换行，限制六行，不影响下载时的局部刷新。
-// Wrap notes on UTF-8 boundaries using measured widths; cap at six lines without changing download refreshes.
-static bool upgrade_note_line(const char **cursor, char *line, size_t capacity) {
+// 日志按 UTF-8 字符和实际字宽换行，限制给的行数，不影响下载时的局部刷新。
+// 换行宽度必须用调用方的实际字号与可用宽度；旧代码写死 26/540，更新页用 22 号时会在行中间就断开。
+// Wrap notes on UTF-8 boundaries using the caller's real font size and available width; the old
+// fixed 26/540 broke lines halfway when the update page draws at 22px.
+static bool upgrade_note_line(const char **cursor, char *line, size_t capacity, int px, int max_w) {
     if (!cursor || !*cursor || !line || capacity < 5) return false;
     const char *p = *cursor;
     while (*p && (strchr("\r\n\t ;", *p) || !strncmp(p, "；", 3)))
@@ -345,24 +347,24 @@ static bool upgrade_note_line(const char **cursor, char *line, size_t capacity) 
         if (bytes > strlen(p) || used + bytes >= capacity) break;
         memcpy(line + used, p, bytes);
         line[used + bytes] = 0;
-        if (used && ui_text_fixed_width_px(26, line) > 540) { line[used] = 0; break; }
+        if (used && ui_text_fixed_width_px(px, line) > max_w) { line[used] = 0; break; }
         used += bytes;
         p += bytes;
     }
     *cursor = p;
     return used != 0;
 }
-static void draw_upgrade_notes_at(uint8_t *fb, int top, int px, int rows) {
+static void draw_upgrade_notes_at(uint8_t *fb, int top, int px, int rows, int max_w) {
     const char *cursor = s_update.release.notes;
     char line[sizeof(s_update.release.notes)];
     if (!*cursor) {
         ui_text_fixed(fb, 60, top, px, "本次更新暂无说明", EPD_DRAW_ALIGN_LEFT, false);
         return;
     }
-    for (int row = 0; row < rows && upgrade_note_line(&cursor, line, sizeof(line)); ++row) {
-        if (row == 5 && *cursor) {
+    for (int row = 0; row < rows && upgrade_note_line(&cursor, line, sizeof(line), px, max_w); ++row) {
+        if (row == rows - 1 && *cursor) {
             size_t used = strlen(line);
-            while (used && (used + 4 > sizeof(line) || ui_text_fixed_width_px(px, line) > 514)) {
+            while (used && (used + 4 > sizeof(line) || ui_text_fixed_width_px(px, line) > max_w - 26)) {
                 do { --used; } while (used && ((unsigned char)line[used] & 0xc0) == 0x80);
                 line[used] = 0;
             }
@@ -372,7 +374,7 @@ static void draw_upgrade_notes_at(uint8_t *fb, int top, int px, int rows) {
     }
 }
 // 确认弹窗里的那六行（位置不变）。/ The six rows inside the confirm dialog (unchanged position).
-static void draw_upgrade_notes(uint8_t *fb) { draw_upgrade_notes_at(fb, 530, 26, 6); }
+static void draw_upgrade_notes(uint8_t *fb) { draw_upgrade_notes_at(fb, 530, 26, 6, 540); }
 static EpdRect upgrade_confirm_button(bool online, bool accept) {
     return (EpdRect){accept ? 364 : 60, online ? 842 : 613, 260, 64};
 }
@@ -1562,7 +1564,7 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
             settings_card(fb, (EpdRect){36, 662, 612, 262}, 22, UI_GRAY_WHITE, 0x70);
             if (online_art) {
                 ui_text(fb, 60, 689, 26, "本次更新", EPD_DRAW_ALIGN_LEFT, false);
-                draw_upgrade_notes_at(fb, 733, 22, 5);
+                draw_upgrade_notes_at(fb, 733, 22, 5, 564);
             } else {
                 ui_text(fb, 60, 689, 29, "TF 卡升级", EPD_DRAW_ALIGN_LEFT, false);
                 ui_text(fb, 60, 739, 23, "升级包放在 TF 卡根目录", EPD_DRAW_ALIGN_LEFT, false);
