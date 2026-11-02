@@ -747,8 +747,10 @@ static bool reader_orient_tick(app_ctx_t* ctx) {
     // 绝对方向：长轴竖直=竖屏/180°，短轴竖直=两个横屏；无需校准，开启首帧即可定向。
     // Absolute: long axis vertical = portrait/180°, short axis vertical = landscapes; no calibration.
     int want;
-    if (ay >= ax) want = gy > 0 ? EPD_ROT_INVERTED_PORTRAIT : EPD_ROT_PORTRAIT;
-    else          want = gx > 0 ? EPD_ROT_INVERTED_LANDSCAPE : EPD_ROT_LANDSCAPE;
+    // 本板加速度计 X 轴沿设备长轴（竖直持机时 X 分量占主导），Y 轴沿短轴；按轴向判四向。
+    // On this board X is the device long axis (dominant when held upright) and Y the short axis.
+    if (ax >= ay) want = gx > 0 ? EPD_ROT_INVERTED_PORTRAIT : EPD_ROT_PORTRAIT;
+    else          want = gy > 0 ? EPD_ROT_INVERTED_LANDSCAPE : EPD_ROT_LANDSCAPE;
     if (s_orient_fresh) {
         // 开启后第一帧有效采样立即定向（不必等去抖）。
         s_orient_fresh = false;
