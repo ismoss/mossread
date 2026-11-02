@@ -389,7 +389,7 @@ void app_settings_init(void) {
     uint8_t hold_refresh = 0;
     if (nvs_get_u8(h, NVS_KEY_HOLD_REFRESH, &hold_refresh) == ESP_OK) s_reader_hold_refresh = hold_refresh == 1;
     uint8_t reader_landscape = 0;
-    if (nvs_get_u8(h, NVS_KEY_READER_LANDSCAPE, &reader_landscape) == ESP_OK && reader_landscape <= 2)
+    if (nvs_get_u8(h, NVS_KEY_READER_LANDSCAPE, &reader_landscape) == ESP_OK && reader_landscape <= 3)
         s_reader_landscape = reader_landscape;
     uint8_t reader_adaptive = 0;
     if (nvs_get_u8(h, NVS_KEY_READER_ADAPTIVE, &reader_adaptive) == ESP_OK)
@@ -866,7 +866,7 @@ void app_settings_set_reader_turn_effect(uint8_t effect) {
 }
 uint8_t app_settings_reader_landscape(void) { return s_reader_landscape; }
 void app_settings_set_reader_landscape(uint8_t mode) {
-    if (mode > 2 || mode == s_reader_landscape) return;
+    if (mode > 3 || mode == s_reader_landscape) return;
     s_reader_landscape = mode;
     nvs_put_u8(NVS_KEY_READER_LANDSCAPE, mode);
 }

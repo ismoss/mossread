@@ -594,6 +594,28 @@ static int s_orient_seen_idx = -1, s_orient_seen_n;
 static bool reader_rot_is_landscape(int rot) {
     return rot == EPD_ROT_LANDSCAPE || rot == EPD_ROT_INVERTED_LANDSCAPE;
 }
+// 校准时的"当前方向"基准；自动换向按相对角度算，横着开启也不会跳屏。
+// Baseline rotation captured at calibration; auto turns are relative so enabling in landscape never jumps.
+static int s_orient_base_rot = EPD_ROT_INVERTED_PORTRAIT;
+// 旋转值 ↔ 角度（工厂竖屏 0°，横 90°，180°，270°）。
+// Rotation value <-> degrees (factory portrait 0°, landscape 90°, 180°, 270°).
+static int rot_deg(int rot) {
+    switch (rot) {
+        case EPD_ROT_LANDSCAPE: return 90;
+        case EPD_ROT_PORTRAIT: return 180;
+        case EPD_ROT_INVERTED_LANDSCAPE: return 270;
+        default: return 0;  // EPD_ROT_INVERTED_PORTRAIT
+    }
+}
+static int rot_from_deg(int deg) {
+    deg = ((deg % 360) + 360) % 360;
+    switch (deg) {
+        case 90: return EPD_ROT_LANDSCAPE;
+        case 180: return EPD_ROT_PORTRAIT;
+        case 270: return EPD_ROT_INVERTED_LANDSCAPE;
+        default: return EPD_ROT_INVERTED_PORTRAIT;
+    }
+}
 // 期望旋转：自适应看重力判定，否则看手动三档。
 // Desired rotation: gravity when adaptive, otherwise the manual three stops.
 static int reader_want_rotation(void) {
@@ -601,6 +623,7 @@ static int reader_want_rotation(void) {
     switch (app_settings_reader_landscape()) {
         case 1: return EPD_ROT_INVERTED_LANDSCAPE;
         case 2: return EPD_ROT_LANDSCAPE;
+        case 3: return EPD_ROT_PORTRAIT;
         default: return EPD_ROT_INVERTED_PORTRAIT;
     }
 }
@@ -640,8 +663,6 @@ static bool reader_landscape_active(void) {
          reader_panel_landscape()) &&
         !s_clear_confirm;
 }
-static enum EpdRotation reader_rotation_now(void) { return (enum EpdRotation)reader_want_rotation(); }
-// （reader_rotation_now 供屏保/兼容调用；重排直接使用目标旋转值。）
 // 视口尺寸跟排版几何标记走：sync 保证画屏前标记与实际排版一致。
 // Viewport sizes follow the built-geometry flag; sync keeps the flag true to the layout.
 static int reader_w(void) { return reader_rot_is_landscape(s_reader_layout_rot) ? epd_width() : UI_LOCK_WIDTH; }
@@ -675,22 +696,29 @@ static void reader_relayout_keep_page(int rotation) {
     epd_set_rotation((enum EpdRotation)rotation);
     unlock_draw();
 }
+// 应用目标旋转：几何族变化才重排，同族只换旋转值（横↔横、竖↔180°）。
+// Apply a target rotation: only a geometry-family change re-lays out; same family just swaps.
+static void reader_apply_rotation(int rotation) {
+    if (reader_rot_is_landscape(rotation) != reader_rot_is_landscape(s_reader_layout_rot)) {
+        reader_relayout_keep_page(rotation);
+    } else {
+        s_reader_layout_rot = rotation;
+        if ((int)epd_get_rotation() != rotation) epd_set_rotation((enum EpdRotation)rotation);
+    }
+}
 // 画屏前的统一对账：正文/目录/同向面板参与期望方向，其它视图一律回竖屏。
 // Reconcile before painting: body/TOC/native panels take the desired rotation, every other view portrait.
 static void reader_sync_rotation(void) {
     const bool scope = s_text && (s_view == READING || s_view == TOC) &&
         (s_view == TOC || s_reader_panel == READER_PANEL_NONE || s_reader_panel == READER_PANEL_TOOLS ||
          reader_panel_landscape()) && !s_clear_confirm;
-    const int want = scope ? (int)reader_rotation_now() : EPD_ROT_INVERTED_PORTRAIT;
-    // 只有几何族（竖 vs 横）变化才重排；同族仅换旋转值（含横↔横、竖↔180°）。
-    // Only a geometry-family change (portrait vs landscape) re-lays out; same family just swaps
-    // the rotation value (landscape<->landscape, portrait<->180°).
-    if (reader_rot_is_landscape(want) != reader_rot_is_landscape(s_reader_layout_rot)) {
-        reader_relayout_keep_page(want);
-    } else {
-        s_reader_layout_rot = want;
-        if ((int)epd_get_rotation() != want) epd_set_rotation((enum EpdRotation)want);
-    }
+    // 关自适应时 reader_want_rotation 读手动档（关闭那一刻已把当前方向写进去，含 180°），
+    // 所以"关掉后保持当前方向"由手动档继承实现，不需要在这里区分。
+    // With adaptive off, reader_want_rotation reads the manual stop that was seeded with the current
+    // rotation at disable time (incl. 180°), so "keep current after disabling" falls out naturally.
+    const int want = scope ? reader_want_rotation() : EPD_ROT_INVERTED_PORTRAIT;
+    if (want != s_reader_layout_rot) reader_apply_rotation(want);
+    else if ((int)epd_get_rotation() != want) epd_set_rotation((enum EpdRotation)want);
 }
 static void reader_rotation_leave(void) {
     // 离开正文（锁屏/退页/全局对话框）前恢复竖屏并清几何标记；后续由 sync 按需重建。
@@ -707,14 +735,26 @@ static bool reader_orient_body(void) {
     return app_settings_reader_adaptive() && s_view == READING && s_text && !s_clear_confirm;
 }
 static bool reader_orient_tick(app_ctx_t* ctx) {
-    // 自适应开关翻转：开时请求重新校准（不继承上次参考），关时清参考。
-    // On toggle: enabling requests a fresh calibration; disabling drops the reference.
     if (app_settings_reader_adaptive() != s_orient_prev_adaptive) {
         s_orient_prev_adaptive = app_settings_reader_adaptive();
         s_orient_ref_ready = false;
         s_orient_seen_n = 0;
-        s_orient_calibrate = s_orient_prev_adaptive;
         s_orient_locked = false;
+        if (s_orient_prev_adaptive) {
+            // 开启：以"当前方向"为基准校准，不做跳转（横着开启也不会跳/校准错）。
+            // Enabling: calibrate relative to the current rotation; no jump even if opened in landscape.
+            s_orient_base_rot = s_reader_layout_rot;
+            s_orient_desired = s_reader_layout_rot;
+            s_orient_calibrate = true;
+        } else {
+            // 关闭：把"当前方向"写进手动档（含 180°=存 3），sync 读手动档即保持当前方向。
+            // Disabling: seed the manual stop with the current rotation (180° stored as 3) so sync keeps it.
+            s_orient_calibrate = false;
+            uint8_t stop = !reader_rot_is_landscape(s_reader_layout_rot)
+                ? (s_reader_layout_rot == EPD_ROT_PORTRAIT ? 3 : 0)
+                : (s_reader_layout_rot == EPD_ROT_INVERTED_LANDSCAPE ? 1 : 2);
+            app_settings_set_reader_landscape(stop);
+        }
     }
     if (!app_settings_reader_adaptive()) return false;
     // 锁定期间冻结自动换向，直到用户取消锁定。/ Freeze auto-rotation while locked.
@@ -744,10 +784,10 @@ static bool reader_orient_tick(app_ctx_t* ctx) {
     const int ap = p < 0 ? -p : p, aq = q < 0 ? -q : q;
     const int idx = ap > aq ? (p > 0 ? 0 : 1) : (q > 0 ? 2 : 3);
     if (idx == 0) { s_orient_ref_x += (gx - s_orient_ref_x) / 8; s_orient_ref_y += (gy - s_orient_ref_y) / 8; }
-    // 四向全支持：0 工厂竖屏、1 180° 倒置竖屏、2/3 两个横屏（横屏左右按真机实测对调）。
-    // All four: 0 factory portrait, 1 180°, 2/3 the two landscapes (pair swapped per device test).
-    const int want = idx == 0 ? EPD_ROT_INVERTED_PORTRAIT : idx == 1 ? EPD_ROT_PORTRAIT
-                   : idx == 2 ? EPD_ROT_INVERTED_LANDSCAPE : EPD_ROT_LANDSCAPE;
+    // 相对基准方向转：idx0 不变、idx1 转 180°、idx2/idx3 各转 90°（横屏对调按真机实测）。
+    // Relative to the baseline: idx0 none, idx1 180°, idx2/idx3 ±90° (landscape pair per device test).
+    static const int turn_deg[4] = {0, 180, -90, 90};
+    const int want = rot_from_deg(rot_deg(s_orient_base_rot) + turn_deg[idx]);
     if (want != s_orient_desired) {
         if (idx != s_orient_seen_idx) { s_orient_seen_idx = idx; s_orient_seen_n = 0; }
         if (++s_orient_seen_n < 3) return false;
@@ -6490,7 +6530,10 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 if (app_settings_reader_adaptive()) {
                     s_orient_locked = !s_orient_locked;
                 } else {
-                    app_settings_set_reader_landscape((app_settings_reader_landscape() + 1) % 3);
+                    uint8_t next = (uint8_t)((app_settings_reader_landscape() + 1) % 3);
+                    app_settings_set_reader_landscape(next);
+                    reader_apply_rotation(next == 1 ? EPD_ROT_INVERTED_LANDSCAPE
+                                        : next == 2 ? EPD_ROT_LANDSCAPE : EPD_ROT_INVERTED_PORTRAIT);
                 }
                 s_reader_panel = READER_PANEL_NONE;
             } else {

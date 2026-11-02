@@ -72,8 +72,8 @@ enum { READING, SHELF, TOC, READER_PANEL_NONE, READER_PANEL_TOOLS, READER_PANEL_
        READER_PANEL_BACKGROUND_PREVIEW, READER_PANEL_KEY_PICKER, READER_PANEL_FONT_RECOVERY };
 '''
 for name in ('reader_rot_is_landscape', 'reader_want_rotation', 'reader_want_landscape',
-             'reader_panel_landscape', 'reader_rotation_now',
-             'reader_relayout_keep_page', 'reader_sync_rotation', 'reader_touch_to_landscape',
+             'reader_panel_landscape', 'reader_relayout_keep_page', 'reader_apply_rotation',
+             'reader_sync_rotation', 'reader_touch_to_landscape',
              'reader_gesture_to_landscape'):
     unit += function(name, book) + '\n'
 unit += r'''
