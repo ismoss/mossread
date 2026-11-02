@@ -755,7 +755,11 @@ static bool reader_orient_tick(app_ctx_t* ctx) {
         // 开启后第一帧有效采样立即定向（不必等去抖）。
         s_orient_fresh = false;
         s_orient_seen_n = 0;
-        if (want != s_orient_desired) { s_orient_desired = want; return true; }
+        if (want != s_orient_desired) {
+            s_orient_desired = want;
+            reader_apply_rotation(want);   // 直接在采样处应用，避免界面态 scope 把它抹回竖屏
+            return true;
+        }
         return false;
     }
     if (want != s_orient_desired) {
@@ -763,6 +767,7 @@ static bool reader_orient_tick(app_ctx_t* ctx) {
         if (++s_orient_seen_n < 2) return false;
         s_orient_seen_n = 0;
         s_orient_desired = want;
+        reader_apply_rotation(want);       // 直接应用（含 180°），不依赖 present 对账
         return true;
     }
     s_orient_seen_n = 0;
