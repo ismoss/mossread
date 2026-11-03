@@ -8,6 +8,9 @@ set(main_requires
     jpegdec
     # WebP 解码子集（libwebp 1.5.0 dec/dsp/utils；只依赖 heap）。/ WebP decoder subset.
     read_pico_webp
+    # 渐进式 JPEG 高清解码（vendor lowzag 2.2.1，MIT）；失败才回落 JPEGDEC 的 1/8。/
+    # Progressive JPEG HD (vendored lowzag 2.2.1, MIT); JPEGDEC 1/8 is the fallback.
+    lowzag
     espressif__libpng
     espressif__zlib
     espressif__esp_tinyusb

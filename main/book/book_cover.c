@@ -15,6 +15,8 @@
 #include "JPEGDEC.h"
 #include "png.h"
 #include "read_pico_webp.h"
+#include "lowzag.h"
+#define KIIKO_USE_LOWZAG 1
 #if defined(ESP_PLATFORM) && CONFIG_JD_USE_ROM
 #include "rom/tjpgd.h"
 typedef unsigned int stream_jpeg_result_t;
@@ -221,13 +223,24 @@ static bool jpegdec_gray(const uint8_t *data, size_t size, unsigned frame_width,
     return ok;
 }
 
+#ifdef KIIKO_USE_LOWZAG
+static bool lowzag_gray(const uint8_t *data, size_t size, unsigned out_width, unsigned out_height,
+                        uint8_t *out);
+#endif
+
 static bool jpeg_gray(const uint8_t *data, size_t size, unsigned out_width,
                       unsigned out_height, uint8_t *out) {
     if (size > UINT32_MAX) return false;
     uint8_t sof = 0;
     unsigned frame_width = 0, frame_height = 0;
-    if (book_jpeg_frame(data, size, &sof, &frame_width, &frame_height) && sof == 0xC2)
+    if (book_jpeg_frame(data, size, &sof, &frame_width, &frame_height) && sof == 0xC2) {
+#ifdef KIIKO_USE_LOWZAG
+        // 渐进式先试 lowzag 高清选档，失败再回落 JPEGDEC 的 1/8 DC 快速路径。
+        // Progressive tries lowzag's HD ladder first, then falls back to JPEGDEC's 1/8 DC fast path.
+        if (lowzag_gray(data, size, out_width, out_height, out)) return true;
+#endif
         return jpegdec_gray(data, size, frame_width, frame_height, out_width, out_height, out);
+    }
     esp_jpeg_image_cfg_t cfg = { .indata = (uint8_t *)data, .indata_size = (uint32_t)size,
                                  .out_format = JPEG_IMAGE_FORMAT_RGB565 };
     esp_jpeg_image_output_t info = {0};
@@ -310,6 +323,165 @@ static bool webp_gray(const uint8_t *data, size_t size, unsigned out_width, unsi
     heap_caps_free(plane);
     return ok;
 }
+
+#ifdef KIIKO_USE_LOWZAG
+/* ---- 渐进式 JPEG（lowzag）/ Progressive JPEG via lowzag ---- */
+
+typedef struct { const uint8_t *data; size_t size, pos; } lowzag_mem_input_t;
+static int lowzag_mem_read(void *ctx, uint8_t *buf, size_t len) {
+    lowzag_mem_input_t *input = (lowzag_mem_input_t *)ctx;
+    if (!input || !buf) return -1;
+    if (input->pos >= input->size) return 0;
+    size_t room = input->size - input->pos;
+    if (len > room) len = room;
+    memcpy(buf, input->data + input->pos, len);
+    input->pos += len;
+    return (int)len;
+}
+
+typedef struct {
+    uint8_t *rows[2];            // 两行缩小后的亮度环 / ring of two reduced-luma rows
+    unsigned width;
+    const scale_step_t *xmap, *ymap;
+    unsigned crop_x, crop_y, crop_w, crop_h;
+    unsigned out_w, out_h;
+    uint8_t *out;
+    unsigned next_row;
+} lowzag_stream_t;
+
+// lowzag 逐行交回 RGB，这里只留亮度；两行到位就把输出行画进最终位图，不占整幅缩小平面。
+// lowzag returns RGB rows; keep luminance and paint each output row once both reduced rows arrive,
+// without holding a whole reduced plane.
+static void lowzag_row_stream(void *ctx, int y, int w, const uint8_t *rgb) {
+    lowzag_stream_t *s = (lowzag_stream_t *)ctx;
+    if (!s || !s->out || !rgb || w <= 0 || y < 0) return;
+    const unsigned row = (unsigned)y;
+    if (row < s->crop_y || row >= s->crop_y + s->crop_h) return;
+    const unsigned local = row - s->crop_y;
+    uint8_t *row_data = s->rows[local & 1u];
+    const unsigned width = (unsigned)w < s->width ? (unsigned)w : s->width;
+    for (unsigned x = 0; x < width; ++x)
+        row_data[x] = luminance(rgb[(size_t)x * 3], rgb[(size_t)x * 3 + 1], rgb[(size_t)x * 3 + 2]);
+    while (s->next_row < s->out_h) {
+        const unsigned j = s->next_row;
+        const int sy = s->ymap[j].at;
+        const int sy1 = scale_next(sy, s->crop_h);
+        if ((unsigned)sy1 != local) break;
+        const int fy = s->ymap[j].frac;
+        const uint8_t *row_a = (unsigned)sy == local ? row_data : s->rows[(local - 1u) & 1u];
+        uint8_t *dst = s->out + (size_t)j * s->out_w;
+        for (unsigned x = 0; x < s->out_w; ++x) {
+            const int sx = s->xmap[x].at, fx = s->xmap[x].frac;
+            const int sx1 = scale_next(sx, s->crop_w);
+            dst[x] = bilinear4(
+                row_a[s->crop_x + (unsigned)sx], row_a[s->crop_x + (unsigned)sx1],
+                row_data[s->crop_x + (unsigned)sx], row_data[s->crop_x + (unsigned)sx1], fx, fy);
+        }
+        ++s->next_row;
+    }
+}
+
+static void *lowzag_psram_alloc(void *ctx, size_t size) {
+    (void)ctx;
+    return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+}
+static void lowzag_psram_free(void *ctx, void *ptr) {
+    (void)ctx;
+    heap_caps_free(ptr);
+}
+
+// 渐进式 JPEG：lowzag 在 1/1..1/8 里按“够清晰、装得下”选档，避免 JPEGDEC 固定 1/8。
+// Progressive JPEG: lowzag picks among 1/1..1/8 for "sharp enough and it fits" instead of JPEGDEC's fixed 1/8.
+static bool lowzag_gray(const uint8_t *data, size_t size, unsigned out_width, unsigned out_height,
+                        uint8_t *out) {
+    if (!data || !size || !out || !out_width || !out_height) return false;
+    int source_w = 0, source_h = 0;
+    if (lowzag_probe(data, size, &source_w, &source_h) != LOWZAG_OK) return false;
+    if (source_w <= 0 || source_h <= 0) return false;
+    const size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    const size_t reserve = 64u * 1024u;
+    if (free_psram <= reserve + 512u * 1024u) return false;
+
+    lowzag_cfg_t cfg = LOWZAG_CFG_INIT;
+    lowzag_mem_input_t input = {data, size, 0};
+    cfg.read = lowzag_mem_read;
+    cfg.read_ctx = &input;
+    cfg.alloc = lowzag_psram_alloc;
+    cfg.alloc_ctx = NULL;
+    cfg.free = lowzag_psram_free;
+
+    // 目标下界：不小于显示尺寸的 3/4；上界：不超过 3 倍，避免为小封面解整幅大图。
+    // Lower bound: at least 3/4 of the display size; upper bound: 3x, so a small cover does not decode a full frame.
+    const int64_t min_w = ((int64_t)out_width * 3 + 3) / 4;
+    const int64_t min_h = ((int64_t)out_height * 3 + 3) / 4;
+    const int64_t max_w = (int64_t)out_width * 3;
+    const int64_t max_h = (int64_t)out_height * 3;
+
+    int chosen_scale = 0, chosen_w = 0, chosen_h = 0;
+    size_t chosen_alloc = 0;
+    for (int pass = 0; pass < 2 && !chosen_scale; ++pass) {
+        for (int d = 1; d <= 8; d <<= 1) {
+            const int ow = (source_w + d - 1) / d;
+            const int oh = (source_h + d - 1) / d;
+            if (pass == 0 && ((int64_t)ow < min_w || (int64_t)oh < min_h ||
+                              (int64_t)ow > max_w || (int64_t)oh > max_h)) continue;
+            cfg.mem_limit = free_psram - reserve;
+            cfg.force_scale = d;
+            lowzag_estimate_t est = LOWZAG_ESTIMATE_INIT;
+            if (lowzag_estimate(&cfg, data, size, &est) != LOWZAG_OK) continue;
+            if (!est.out_w || !est.out_h) continue;
+            if (est.alloc_bytes + reserve > free_psram) continue;
+            chosen_scale = d;
+            chosen_w = est.out_w;
+            chosen_h = est.out_h;
+            chosen_alloc = est.alloc_bytes;
+            break;
+        }
+    }
+    if (!chosen_scale) return false;
+
+    const book_crop_t crop = book_cover_crop((unsigned)chosen_w, (unsigned)chosen_h, out_width, out_height);
+    if (!crop.width || !crop.height || crop.x + crop.width > (unsigned)chosen_w ||
+        crop.y + crop.height > (unsigned)chosen_h) return false;
+    scale_step_t *xmap = scale_map(out_width, crop.width);
+    scale_step_t *ymap = scale_map(out_height, crop.height);
+    if (!xmap || !ymap) { free(xmap); free(ymap); return false; }
+    uint8_t *rows[2] = {cover_alloc((size_t)chosen_w), cover_alloc((size_t)chosen_w)};
+    if (!rows[0] || !rows[1]) {
+        free(rows[0]); free(rows[1]); free(xmap); free(ymap);
+        return false;
+    }
+    const size_t free_now = heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (free_now <= reserve + chosen_alloc) {
+        free(rows[0]); free(rows[1]); free(xmap); free(ymap);
+        return false;
+    }
+    lowzag_stream_t stream = {
+        .rows = {rows[0], rows[1]},
+        .width = (unsigned)chosen_w,
+        .xmap = xmap,
+        .ymap = ymap,
+        .crop_x = crop.x,
+        .crop_y = crop.y,
+        .crop_w = crop.width,
+        .crop_h = crop.height,
+        .out_w = out_width,
+        .out_h = out_height,
+        .out = out,
+    };
+    cfg.mem_limit = free_now - reserve;
+    cfg.force_scale = chosen_scale;
+    cfg.row = lowzag_row_stream;
+    cfg.row_ctx = &stream;
+    input.pos = 0;
+
+    lowzag_info_t info = LOWZAG_INFO_INIT;
+    const lowzag_err_t err = lowzag_decode(&cfg, &info);
+    const bool ok = err == LOWZAG_OK && stream.next_row == out_height;
+    free(rows[0]); free(rows[1]); free(xmap); free(ymap);
+    return ok;
+}
+#endif
 
 typedef struct { const uint8_t *data; size_t size, pos; FILE *file; } png_input_t;
 static void png_read_mem(png_structp png, png_bytep dst, png_size_t count) {
@@ -840,10 +1012,24 @@ bool book_image_file_grayscale(const char *path, bool png, unsigned width, unsig
         if (file_frame(file, false, &sof, &source_w, &source_h) && !fseek(file, 0, SEEK_SET)) {
             jpeg_file_plane_t plane = {.out = out, .width = width, .height = height};
             memset(out, 255, (size_t)width * height);
-            if (sof == 0xc2)
+            if (sof == 0xc2) {
+#ifdef KIIKO_USE_LOWZAG
+                // 渐进式先整段读入 PSRAM 交给 lowzag 高清选档；失败再回落 JPEGDEC 的 1/8。
+                // Progressive loads the whole file into PSRAM for lowzag's HD ladder; JPEGDEC 1/8 is the fallback.
+                uint8_t *lzbuf = (st.st_size > 0 && (uint64_t)st.st_size <= 12u * 1024u * 1024u)
+                                 ? cover_alloc((size_t)st.st_size) : NULL;
+                if (lzbuf && fseek(file, 0, SEEK_SET) == 0 &&
+                    fread(lzbuf, 1, (size_t)st.st_size, file) == (size_t)st.st_size &&
+                    lowzag_gray(lzbuf, (size_t)st.st_size, width, height, out)) {
+                    ok = true;
+                    plane.pixels = (size_t)width * height;
+                }
+                free(lzbuf);
+                if (!ok && fseek(file, 0, SEEK_SET) == 0)
+#endif
                 ok = jpegdec_gray_file(file, (int)st.st_size, source_w, source_h, width, height, true,
                     jpeg_file_collect, &plane, &plane.source_w, &plane.source_h) != 0;
-            else ok = jpeg_baseline_file(file, source_w, source_h, width, height, &plane);
+            } else ok = jpeg_baseline_file(file, source_w, source_h, width, height, &plane);
             ok = ok && plane.pixels >= (size_t)width * height;
         }
     }
