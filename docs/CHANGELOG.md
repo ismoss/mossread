@@ -21,6 +21,10 @@
 按版本简述对用户可见的变化；使用方法见 [README](../README.zh-CN.md)。
 User-visible changes by release; see [README](../README.md) for usage.
 
+## 2026-11-03 · 二改 mod82
+
+- **-mod82（2026-11-03，3,207,248B / `3b880e00…b0bb`，180°触摸/手势翻转）**：`gesture_event` 之前只在两个横屏旋转下做坐标/方向重映射，**漏了 180°（EPD_ROT_PORTRAIT）**，导致倒置竖屏下触摸点落在镜像位置——工具栏任何按钮都点不中（只触发"点外部关闭"）、上下左右手势全反、锁定按钮也点不到。现把 180° 纳入同一套翻转（`reader_touch_to_landscape` 的 180 分支 + `reader_gesture_to_landscape` 的 180 分支本已就绪）。同时回退了 mod81 里多余的"锁定对账特殊分支"。真机待验。
+
 ## 2026-11-03 · 二改 mod81
 
 - **-mod81（2026-11-03，3,207,280B / `3a58975c…3b8e`，180°锁定/手势竖直水波纹）**：① `reader_sync_rotation` 在**自适应且锁定时永远用冻结方向**，不再因工具栏/面板 scope 变化把 180° 拉回竖屏（修"点锁定后关状态栏又竖回去"）；② 手势把"上滑=下一页/下滑=上一页"时，`turn_page` 用 `s_turn_vertical_hint` 让**本次水波纹走竖直 TTB/BTT**（其他手势触发翻页则按滑向），文字快翻路径也用同一方向。真机待验。
