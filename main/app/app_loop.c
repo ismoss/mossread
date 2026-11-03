@@ -1116,7 +1116,15 @@ void app_loop_run(const app_loop_config_t* config) {
                     cancel_gesture(&ctx, current, &gesture);
                     if (menu_pressed >= 0) menu_feedback(&ctx, current, menu_leaf, menu_pressed, false, &feedback);
                     menu_pressed = UI_MENU_HIT_NONE;
-                    app_redraw_t power_redraw = !quick_lock_requested && !quick_was_open && !menu_open && current->on_power_short
+                    // 阅读电源键翻页：只有“轻点”（按住 < APP_READER_POWER_TAP_MAX_MS）才翻页；
+                    // 按住更久按息屏处理，不必等到 PMU 的 1.5s 长按。工具栏/面板打开时页面的
+                    // on_power_short 返回 NONE，于是落到下面的锁屏分支（= 息屏而非翻页）。
+                    // Reader power turn: only a quick tap (hold < APP_READER_POWER_TAP_MAX_MS) pages; a longer
+                    // hold screens off instead of waiting for the PMU 1.5 s long press. With any reader panel
+                    // open on_power_short returns NONE, so control falls through to the lock branch below.
+                    bool power_quick_tap = read_pico_pmu_last_key_held_ms() < APP_READER_POWER_TAP_MAX_MS;
+                    app_redraw_t power_redraw = !quick_lock_requested && !quick_was_open && !menu_open &&
+                        power_quick_tap && current->on_power_short
                         ? current->on_power_short(&ctx) : APP_REDRAW_NONE;
                     if (power_redraw != APP_REDRAW_NONE) {
                         present_page(&ctx, current, &gesture, power_redraw);

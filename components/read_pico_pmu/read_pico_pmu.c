@@ -401,6 +401,10 @@ void read_pico_pmu_drain_events(void) {
     }
 }
 
+// 最近一次短/长按的按住时长（毫秒）：供主机用比 PMU 1.5s 更短的阈值区分“轻点”与“按住”。
+// Hold duration (ms) of the last short/long press, so the host can split tap vs hold shorter than the PMU's 1.5 s.
+static uint32_t s_last_key_held_ms;
+
 read_pico_pmu_key_action_t read_pico_pmu_take_key_action(void) {
     s_wake_click=(power_double_click_t){0};
     read_pico_pmu_key_action_t action = READ_PICO_PMU_KEY_NONE;
@@ -411,9 +415,11 @@ read_pico_pmu_key_action_t read_pico_pmu_take_key_action(void) {
         uint16_t id = s_snap.event.event_id;
         if (type == PMU_EVT_KEY_SHORT) {
             if (action == READ_PICO_PMU_KEY_NONE) action = READ_PICO_PMU_KEY_SHORT;
+            s_last_key_held_ms = s_snap.event.arg0;
             ESP_LOGI(TAG, "KEY_SHORT id=%u held=%u", (unsigned)id, (unsigned)s_snap.event.arg0);
         } else if (type == PMU_EVT_KEY_LONG) {
             action = READ_PICO_PMU_KEY_LONG;
+            s_last_key_held_ms = s_snap.event.arg0;
             ESP_LOGI(TAG, "KEY_LONG id=%u held=%u", (unsigned)id, (unsigned)s_snap.event.arg0);
         }
         if (id == 0) break;
@@ -421,6 +427,8 @@ read_pico_pmu_key_action_t read_pico_pmu_take_key_action(void) {
     }
     return action;
 }
+
+uint32_t read_pico_pmu_last_key_held_ms(void) { return s_last_key_held_ms; }
 
 bool read_pico_pmu_take_key_short(void) {
     return read_pico_pmu_take_key_action() == READ_PICO_PMU_KEY_SHORT;

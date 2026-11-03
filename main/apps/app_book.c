@@ -8194,8 +8194,10 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 }
 static app_redraw_t on_power_short(app_ctx_t* ctx) {
     s_reader_tap.pending = false;
+    // 仅裸正文翻页；任何阅读面板/工具栏打开时返回 NONE，交回主循环走锁屏（息屏而非翻页）。
+    // Page only in the bare reader body; any open panel/toolbar returns NONE so the loop locks the screen.
     if (s_view != READING || !s_text || s_clear_confirm ||
-        s_reader_panel == READER_PANEL_FONT_RECOVERY || !app_settings_reader_power_turn()) return APP_REDRAW_NONE;
+        s_reader_panel != READER_PANEL_NONE || !app_settings_reader_power_turn()) return APP_REDRAW_NONE;
     s_stats_activity_ms = ctx->now_ms;
     app_redraw_t result = turn_page(ctx, 1);
     return result == APP_REDRAW_NONE ? APP_REDRAW_DONE : result;

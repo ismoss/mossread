@@ -202,6 +202,9 @@ void read_pico_pmu_drain_events(void);
 /// 抽干事件队列并返回本轮最高优先级按键动作；长按优先于短按。
 /// / Drain the queue and return the highest-priority key action; long wins over short.
 read_pico_pmu_key_action_t read_pico_pmu_take_key_action(void);
+/// 最近一次由 read_pico_pmu_take_key_action 处理的短/长按的按住时长（毫秒）；无新按键时沿用旧值。
+/// / Hold duration (ms) of the last short/long press handled by read_pico_pmu_take_key_action; stale when none.
+uint32_t read_pico_pmu_last_key_held_ms(void);
 /// 抽干事件队列；若有电源键短按返回 true。
 /// / Drain the queue; true if a power-key short press was seen.
 bool read_pico_pmu_take_key_short(void);

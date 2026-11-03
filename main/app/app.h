@@ -143,7 +143,9 @@ struct app_desc_s {
     /// 锁屏前保存页面的阅读状态。/ Persist page state before lock rendering.
     void (*on_before_lock)(app_ctx_t* ctx);
     /// 可选：消费电源键短按；返回 NONE 时沿用锁屏，DONE 表示已消费但无需刷新。
+    /// 只在裸阅读正文（无面板/工具栏）翻页；工具栏打开时返回 NONE 让主循环息屏。
     /// Optional: consume a short power press; NONE keeps locking, DONE consumes without redraw.
+    /// Pages only in the bare reader body (no panel/toolbar); with tools open it returns NONE so the loop locks.
     app_redraw_t (*on_power_short)(app_ctx_t* ctx);
     /// 纯绘制，不做 I2C 写、蜂鸣这类副作用，整屏强刷才能安全复用它。
     /// / Paint only. No I2C writes or buzzer. KEY2 full redraw reuses this.
@@ -185,6 +187,11 @@ struct app_desc_s {
 #define APP_LOCK_POLL_MS 200
 #define APP_LOCK_IGNORE_BOOT_MS 2000
 #define APP_LOCK_IGNORE_SELFTEST_MS 2000
+/// 阅读正文电源键翻页：按住不超过此时长算“轻点翻页”，更长（直到 PMU 1.5 s 长按之前）算“息屏”。
+/// 用户反馈原 1.5 s 太长、想息屏时常被当成翻页，故由主机按更短阈值拆分。
+/// / Reader power turn: holds up to this are a page-turn tap; longer holds (before the PMU 1.5 s long press) screen off.
+/// The user found 1.5 s too long, so the host splits tap vs hold at a shorter threshold.
+#define APP_READER_POWER_TAP_MAX_MS 500
 
 /// 按 redraw 把 framebuffer 推上屏，顺带做 pclk 欠载兜底。APP_REDRAW_DONE 直接返回。
 /// / Present fb for redraw, with a pclk-underrun fallback. APP_REDRAW_DONE returns.
