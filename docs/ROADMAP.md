@@ -66,13 +66,14 @@ covers user-visible changes per release; volatile state lives in the untracked
 | 180°触摸/手势翻转 | mod82 | 180°纳入触摸点与滑动方向重映射，修倒置竖屏工具栏/手势全反 |
 | 电源键翻页手感 | mod83 | 阅读正文「电源键翻页」改为轻点(<0.5s)翻页、按住更久息屏；工具栏/任何面板打开时电源键=息屏不翻页 |
 | WebP 图片支持 | mod84 | 移植 read_pico_webp（libwebp 解码子集）：封面/插图/TF 图片/壁纸/阅读背景/文件页支持 .webp；渐进 JPEG 仍 JPEGDEC，lowzag 留待下块 |
+| 渐进 JPEG 高清 | mod85 | 移植 lowzag 2.2.1：渐进式 JPEG 按 1/1..1/8 选档高清解码，装不下回落 JPEGDEC 1/8；插图/封面/TF 图片/壁纸/阅读背景 |
 | 品牌 | mod55 | 系统可见名统一为 **mossread**；开机画面换成 mossread 字标 + 内建图元画的星图；热点名 `mossread-XXXX` |
 | 状态与观感 | mod50、mod51 | 设置页网络状态实时刷新；回到锁屏整屏定稿（清掉密码圈圈残影） |
 | 锁屏收尾 | mod52–mod54 | GC16 收尾锁屏面、透明书封横屏适配；**圆点残影真因 = 锁屏图缓存里存过带键盘的帧**（mod53 魔数 +1 并解锁即删缓存），深睡保留锁屏画面；**mod54 修好自动锁屏被后台网络会话卡住**（5 分钟不熄屏的真因）|
 
 ## 进行中 / In flight
 
-- 无（mod84 已发版，等待真机验收；下一块：渐进 JPEG lowzag 高清解码）
+- 无（mod85 已发版，等待真机验收；P1 图片栈 WebP+lowzag 已完成，下一块：内存策略 + 瘦身）
 
 ## 待做 / Planned
 
@@ -99,4 +100,4 @@ covers user-visible changes per release; volatile state lives in the untracked
 
 ## 验收状态 / Acceptance
 
-**mod1–mod84 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
+**mod1–mod85 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。

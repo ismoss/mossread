@@ -21,6 +21,10 @@
 按版本简述对用户可见的变化；使用方法见 [README](../README.zh-CN.md)。
 User-visible changes by release; see [README](../README.md) for usage.
 
+## 2026-11-03 · 二改 mod85
+
+- **-mod85（2026-11-03，3,282,496B / `6563e273…309b`，渐进 JPEG lowzag 高清）**：渐进式 JPEG 改用 **lowzag 2.2.1 选档解码**（1/1..1/8，按"够清晰且装得下 PSRAM"选档），失败才回落 JPEGDEC 的固定 1/8——**插图/封面/TF 图片/壁纸/阅读背景**更清晰。基线 JPEG / WebP / PNG 路径不变；PSRAM 紧张时自动回落。真机待验。
+
 ## 2026-11-03 · 二改 mod84
 
 - **-mod84（2026-11-03，3,270,432B / `1880735f…72ce`，WebP 图片支持）**：新增 **WebP 解码**（移植 PageIsle 的 `read_pico_webp`，libwebp 1.5.0 解码子集）——**书内封面/插图、TF 图片页、壁纸（竖/横槽）、阅读背景、文件页**都支持 `.webp`；按 RIFF/VP8X/VP8/VP8L 头取尺寸，解码走 RGB565 后复用原裁剪缩放路径。TF WebP 文件 >12MB 不预览，解码平面受组件像素上限约束（PSRAM 峰值有界）。渐进式 JPEG 仍走原 JPEGDEC 1/8 路径，lowzag 高清解码留待下一块。真机待验。
