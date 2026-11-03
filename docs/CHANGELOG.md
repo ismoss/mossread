@@ -21,6 +21,10 @@
 按版本简述对用户可见的变化；使用方法见 [README](../README.zh-CN.md)。
 User-visible changes by release; see [README](../README.md) for usage.
 
+## 2026-11-03 · 二改 mod83
+
+- **-mod83（2026-11-03，3,207,312B / `3c9b8a2d…7720`，电源键翻页手感）**：①阅读正文开启「电源键翻页」后，**只有轻点（按住 < 0.5s）才翻页**；按住更久（到 PMU 1.5s 长按之前）直接**息屏**，不必再等 1.5 秒——原来 0–1.5s 全按短按处理，所以想息屏时常被当成翻页。②**工具栏或任何阅读面板打开时，点电源键＝息屏，不再翻页**。实现：新增 `read_pico_pmu_last_key_held_ms()` 暴露 PMU `KEY_SHORT/KEY_LONG` 的 `held_ms`，主循环按 `APP_READER_POWER_TAP_MAX_MS`（500ms）拆分；`on_power_short` 仅在裸正文生效，面板打开时返回 NONE 走锁屏。真机待验。
+
 ## 2026-11-03 · 二改 mod82
 
 - **-mod82（2026-11-03，3,207,248B / `3b880e00…b0bb`，180°触摸/手势翻转）**：`gesture_event` 之前只在两个横屏旋转下做坐标/方向重映射，**漏了 180°（EPD_ROT_PORTRAIT）**，导致倒置竖屏下触摸点落在镜像位置——工具栏任何按钮都点不中（只触发"点外部关闭"）、上下左右手势全反、锁定按钮也点不到。现把 180° 纳入同一套翻转（`reader_touch_to_landscape` 的 180 分支 + `reader_gesture_to_landscape` 的 180 分支本已就绪）。同时回退了 mod81 里多余的"锁定对账特殊分支"。真机待验。

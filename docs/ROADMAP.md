@@ -64,13 +64,14 @@ covers user-visible changes per release; volatile state lives in the untracked
 | 180°锁定/残影/上下水波纹 | mod80 | 锁定冻结当前方向(修180°)；换向补整屏GC16清残影；上下翻页水波纹走 TTB/BTT |
 | 180°锁定抗scope/手势竖直水波纹 | mod81 | 自适应+锁定时对账永用冻结方向；手势上/下滑翻页走竖直水波纹 |
 | 180°触摸/手势翻转 | mod82 | 180°纳入触摸点与滑动方向重映射，修倒置竖屏工具栏/手势全反 |
+| 电源键翻页手感 | mod83 | 阅读正文「电源键翻页」改为轻点(<0.5s)翻页、按住更久息屏；工具栏/任何面板打开时电源键=息屏不翻页 |
 | 品牌 | mod55 | 系统可见名统一为 **mossread**；开机画面换成 mossread 字标 + 内建图元画的星图；热点名 `mossread-XXXX` |
 | 状态与观感 | mod50、mod51 | 设置页网络状态实时刷新；回到锁屏整屏定稿（清掉密码圈圈残影） |
 | 锁屏收尾 | mod52–mod54 | GC16 收尾锁屏面、透明书封横屏适配；**圆点残影真因 = 锁屏图缓存里存过带键盘的帧**（mod53 魔数 +1 并解锁即删缓存），深睡保留锁屏画面；**mod54 修好自动锁屏被后台网络会话卡住**（5 分钟不熄屏的真因）|
 
 ## 进行中 / In flight
 
-- 无（mod82 已发版，等待真机验收）
+- 无（mod83 已发版，等待真机验收）
 
 ## 待做 / Planned
 
@@ -97,4 +98,4 @@ covers user-visible changes per release; volatile state lives in the untracked
 
 ## 验收状态 / Acceptance
 
-**mod1–mod82 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
+**mod1–mod83 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
