@@ -711,10 +711,7 @@ static void reader_sync_rotation(void) {
     // 所以"关掉后保持当前方向"由手动档继承实现，不需要在这里区分。
     // With adaptive off, reader_want_rotation reads the manual stop that was seeded with the current
     // rotation at disable time (incl. 180°), so "keep current after disabling" falls out naturally.
-    const bool lock_keep = app_settings_reader_adaptive() && s_orient_locked &&
-        s_text && s_view == READING && !s_clear_confirm;
-    const int want = lock_keep ? s_orient_desired
-                    : (scope ? reader_want_rotation() : EPD_ROT_INVERTED_PORTRAIT);
+    const int want = scope ? reader_want_rotation() : EPD_ROT_INVERTED_PORTRAIT;
     if (want != s_reader_layout_rot) reader_apply_rotation(want);
     else if ((int)epd_get_rotation() != want) epd_set_rotation((enum EpdRotation)want);
 }
@@ -7888,7 +7885,8 @@ static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* even
     // trips the dangling-pointer warning.
     ui_gesture_event_t rotated;
     const ui_gesture_event_t* ev = event;
-    if (epd_get_rotation() == EPD_ROT_LANDSCAPE || epd_get_rotation() == EPD_ROT_INVERTED_LANDSCAPE) {
+    if (epd_get_rotation() == EPD_ROT_LANDSCAPE || epd_get_rotation() == EPD_ROT_INVERTED_LANDSCAPE ||
+        epd_get_rotation() == EPD_ROT_PORTRAIT) {
         // 横屏只在正文/工具条期间生效，所以整个分发可以安全换到横屏逻辑系：报点平移到
         // 横屏网格、滑动方向随旋转重映射；竖屏路径不会走进这里。
         // Landscape only lives during the body and toolbar, so the whole dispatch safely moves
