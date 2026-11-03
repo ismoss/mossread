@@ -89,7 +89,7 @@ static bool resolve_vcom_at_boot(void) {
 
 // 极简启动画面直接借内建字形绘制，不读TF、不借阅读字体、不保存整屏位图。
 // Draw the minimal cold splash with built-in glyphs, without TF access, reader faces or a full-screen asset.
-static void draw_startup_frame(uint8_t *framebuffer) {
+static void __attribute__((unused)) draw_startup_frame(uint8_t *framebuffer) {
     ui_clear_page(framebuffer);
     const int cx = epd_rotated_display_width() / 2;
     const int cy = epd_rotated_display_height() / 2;
@@ -163,10 +163,19 @@ static bool prepare_startup_frame(EpdiyHighlevelState *hl,uint8_t *framebuffer,b
     // 透明书封没有可恢复的底图时不要先画白色圆锁；让启动门等 SD/缓存后再一次性出图。
     // Do not show the white badge before a transparent-cover boot; let the gate wait for media
     // and draw the final face once.
-    if(resuming && app_settings_lock_style()!=4 && app_settings_lock_style()!=3)
+    // 冷启动 / 深睡唤醒不再画「准备资源」开机图（mossread 大字+星图），统一只显示小锁脸，
+    // 与 PageIsle 一致，消除唤醒时 "mossread → 壁纸" 的闪现。样式 4（关闭锁屏）仍只留白底，
+    // 样式 3（透明书封）续启时交给启动门等 SD 就绪后再一次性出图。
+    // No preparing-resources splash on cold boot / deep wake any more: draw the small lock face
+    // instead (as PageIsle does), removing the "mossread -> wallpaper" flash. Style 4 stays white;
+    // style 3's transparent cover is drawn later by the gate after the SD card is ready.
+    uint8_t boot_style = app_settings_lock_style();
+    if (boot_style == 4) {
+        // 关闭锁屏画面：只留白底 / lock face disabled: plain white
+    } else if (resuming && boot_style == 3) {
+        // 透明书封：由启动门在 SD 就绪后出图 / transparent cover: drawn by the gate after SD
+    } else {
         ui_lock_fallback_draw(framebuffer);
-    else if(!resuming) {
-        draw_startup_frame(framebuffer);
     }
     update_display_from_white(hl);
     return false;
@@ -250,8 +259,12 @@ void app_main(void) {
     const bool key_boot_reset = reset == ESP_RST_POWERON || reset == ESP_RST_DEEPSLEEP;
     const bool pmu_says_key_boot = boot_pmu != NULL && boot_pmu->wake_reason == 2;
     const bool pmu_wake_unknown = boot_pmu != NULL && boot_pmu->wake_reason == 0;
-    const bool boot_key_candidate =
-        key_boot_reset && (pmu_says_key_boot || pmu_wake_unknown);
+    // 放宽（对齐 PageIsle）：电源键复位（POWERON/DEEPSLEEP）就尝试取一次开机短按证据，不再强求
+    // wake_reason==2；但充电(5)/闹钟(6)启动不取锁存，OTA/软复位/异常复位仍被 key_boot_reset 排除。
+    // Relaxed (as PageIsle): capture the boot short-press on any POWERON/DEEPSLEEP reset instead of
+    // only wake_reason==2, but not on charger(5)/alarm(6) boots; OTA/soft/abnormal resets stay excluded.
+    const bool boot_key_candidate = key_boot_reset &&
+        !(boot_pmu && (boot_pmu->wake_reason == 5 || boot_pmu->wake_reason == 6));
     const bool one_press_boot = resuming && !lock_pin_enabled() && hw.pmu_ready &&
         app_settings_wake_presses() == 1;
     // 充电/闹钟/OTA/软复位启动时不要提前取走短按锁存；事件要留给锁面等待器。
@@ -281,8 +294,7 @@ void app_main(void) {
     // 但那次复位本身不是用户从关机/深睡中按键启动，不能因此把恢复检查点当作已解锁。
     // A key event without a physical power/deep-sleep reset is not unlock evidence: OTA and
     // esp_restart can retain or receive a short press while the app is already rebooting.
-    const bool physical_key_boot = key_boot_reset &&
-        (pmu_says_key_boot || (boot_press && pmu_wake_unknown));
+    const bool physical_key_boot = key_boot_reset && (boot_press || pmu_says_key_boot);
     const uint8_t wake_presses = app_settings_wake_presses();
     const bool boot_with_one_press = one_press_boot && physical_key_boot;
     const bool double_press_boot = physical_key_boot && resuming && wake_presses == 2 &&
