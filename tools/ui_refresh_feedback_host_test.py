@@ -60,6 +60,7 @@ static EpdRect s_area,s_du_area;
 static unsigned s_du_count;
 static int64_t s_du_ms;
 static int s_water_turn_dir;
+static int s_turn_vertical_hint;
 static void display_main_transition_shelf_page(void){}
 static unsigned pushes;
 static int route;

@@ -47,6 +47,7 @@ static unsigned app_settings_reader_landscape(void){return 0;}
 static int s_orient_desired = EPD_ROT_INVERTED_PORTRAIT;
 static int s_reader_layout_rot = EPD_ROT_INVERTED_PORTRAIT;
 static bool app_settings_reader_adaptive(void){return false;}
+static bool s_orient_locked;
 static int reader_w(void){return s_reader_landscape_layout?epd_width():684;}
 static int reader_h(void){return s_reader_landscape_layout?epd_height():1216;}
 static EpdRect body_rect(void){return (EpdRect){0,0,reader_w(),reader_h()};}

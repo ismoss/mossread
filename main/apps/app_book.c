@@ -492,6 +492,9 @@ static bool s_reader_cleanup;
 static bool s_reader_footer_pending;
 static bool s_water_turn_pending;
 static e0470_turn_dir_t s_water_turn_dir;
+// 手势上下滑触发的翻页：提示本回合水波纹走竖直方向（0 无、1 上滑、-1 下滑），turn_page 消费后清零。
+// Vertical hint for a gesture-driven turn: 0 none, 1 swipe-up, -1 swipe-down; cleared in turn_page.
+static int s_turn_vertical_hint;
 static int s_pressed_control = -1;
 static bool s_shelf_feedback_pending;
 static bool s_cover_batch_present_pending;
@@ -708,7 +711,10 @@ static void reader_sync_rotation(void) {
     // 所以"关掉后保持当前方向"由手动档继承实现，不需要在这里区分。
     // With adaptive off, reader_want_rotation reads the manual stop that was seeded with the current
     // rotation at disable time (incl. 180°), so "keep current after disabling" falls out naturally.
-    const int want = scope ? reader_want_rotation() : EPD_ROT_INVERTED_PORTRAIT;
+    const bool lock_keep = app_settings_reader_adaptive() && s_orient_locked &&
+        s_text && s_view == READING && !s_clear_confirm;
+    const int want = lock_keep ? s_orient_desired
+                    : (scope ? reader_want_rotation() : EPD_ROT_INVERTED_PORTRAIT);
     if (want != s_reader_layout_rot) reader_apply_rotation(want);
     else if ((int)epd_get_rotation() != want) epd_set_rotation((enum EpdRotation)want);
 }
@@ -4345,7 +4351,7 @@ static bool present(app_ctx_t* ctx, app_redraw_t redraw) {
               s_view == READING && s_presented_view == (int)READING &&
               s_reader_panel == READER_PANEL_NONE && !s_toolbar && !s_clear_confirm &&
               !book_layout_page_image_count(s_page) && !app_settings_book_background_path()[0]
-                ? update_display_text_turn(ctx->hl, turn_area, E0470_TURN_RTL)
+                ? update_display_text_turn(ctx->hl, turn_area, s_water_turn_dir)
             // 普通翻页继续原灰阶差分；速读仅进入已验证的纯文字出口。
             // Ordinary keeps its gray differences; Fast BW enters only the qualified pure-text outlet.
             // 普通翻页与全屏阅读都只驱动变化像素；设置面板等局部绘制保留原路径。
@@ -5867,6 +5873,8 @@ static bool reader_turn_chrome(app_ctx_t *ctx) {
 }
 static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
     if (!s_text || s_clear_confirm) return APP_REDRAW_NONE;
+    const int turn_vh = s_turn_vertical_hint;   // 手势上下滑→竖直水波纹提示，本回合消费
+    s_turn_vertical_hint = 0;
     reader_zoom_reset();
     // 页面图片表可能随跨章加载替换，旧页资格以实际成功显示的画面为准。
     // Chapter loads may replace the image table; the old-page eligibility comes from the displayed frame.
@@ -5905,9 +5913,10 @@ static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
                            (app_settings_reader_turn_effect() == 1 || app_settings_reader_turn_effect() == 3) &&
                            from_text_frame &&
                            book_layout_page_image_count(s_page) == 0 && !app_settings_book_background_path()[0];
-    // 上下翻页模式用水波纹时，波纹方向也跟着上/下走；左右模式保持 RTL/LTR。
-    // In vertical turn mode the ripple follows up/down (TTB/BTT); horizontal keeps RTL/LTR.
-    s_water_turn_dir = app_settings_reader_vertical_turn()
+    // 竖向水波纹：上下翻页模式，或本次由"手势上/下滑"触发的翻页；否则横向 RTL/LTR。
+    // Vertical ripple when turn mode is vertical, or this turn came from an up/down gesture.
+    const bool vertical_ripple = app_settings_reader_vertical_turn() || turn_vh != 0;
+    s_water_turn_dir = vertical_ripple
         ? (dir > 0 ? E0470_TURN_BTT : E0470_TURN_TTB)
         : (dir > 0 ? E0470_TURN_RTL : E0470_TURN_LTR);
     return chrome_changed ? APP_REDRAW_PAGE : redraw;
@@ -7923,6 +7932,10 @@ static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* even
             uint8_t gv = app_settings_reader_gesture((unsigned)gslot);
             if (gv) {
                 app_reader_key_action_t act = (app_reader_key_action_t)(gv - 1);
+                // 手势上/下滑触发翻页时，让本次水波纹走竖直方向。
+                if ((act == APP_READER_KEY_PREV || act == APP_READER_KEY_NEXT) &&
+                    (ev->type == UI_GESTURE_SWIPE_U || ev->type == UI_GESTURE_SWIPE_D))
+                    s_turn_vertical_hint = ev->type == UI_GESTURE_SWIPE_U ? 1 : -1;
                 s_reader_tap.pending = false;
                 return act == APP_READER_KEY_NONE ? APP_REDRAW_NONE : reader_key_action(ctx, act);
             }
