@@ -68,13 +68,14 @@ covers user-visible changes per release; volatile state lives in the untracked
 | WebP 图片支持 | mod84 | 移植 read_pico_webp（libwebp 解码子集）：封面/插图/TF 图片/壁纸/阅读背景/文件页支持 .webp；渐进 JPEG 仍 JPEGDEC，lowzag 留待下块 |
 | 渐进 JPEG 高清 | mod85 | 移植 lowzag 2.2.1：渐进式 JPEG 按 1/1..1/8 选档高清解码，装不下回落 JPEGDEC 1/8；插图/封面/TF 图片/壁纸/阅读背景 |
 | 内存策略第一批 | mod86 | 离开书架归还封面/快刷/预取 PSRAM 缓存（回书架从磁盘缓存重建）；DNS 抓取缓冲搬 PSRAM（内部 DIRAM 60.97%→59.77%） |
+| 深睡唤醒手感 | mod87 | 去掉冷启动/深睡唤醒的 mossread 开机图，统一只显示小锁脸；放宽深睡按键证据，按一次电源即可续读（OTA/复位/充电/闹钟仍不放行） |
 | 品牌 | mod55 | 系统可见名统一为 **mossread**；开机画面换成 mossread 字标 + 内建图元画的星图；热点名 `mossread-XXXX` |
 | 状态与观感 | mod50、mod51 | 设置页网络状态实时刷新；回到锁屏整屏定稿（清掉密码圈圈残影） |
 | 锁屏收尾 | mod52–mod54 | GC16 收尾锁屏面、透明书封横屏适配；**圆点残影真因 = 锁屏图缓存里存过带键盘的帧**（mod53 魔数 +1 并解锁即删缓存），深睡保留锁屏画面；**mod54 修好自动锁屏被后台网络会话卡住**（5 分钟不熄屏的真因）|
 
 ## 进行中 / In flight
 
-- 无（mod86 已发版，等待真机验收；P1 图片栈完成，内存策略第一批完成；下一块待定：字级划线·笔记·标签 / 文件管理 rc103 套件）
+- 无（mod87 已发版，等待真机验收；P1 图片栈+内存第一批+深睡唤醒手感完成；下一块待定：字级划线·笔记·标签 / 文件管理 rc103 套件）
 
 ## 待做 / Planned
 
@@ -101,4 +102,4 @@ covers user-visible changes per release; volatile state lives in the untracked
 
 ## 验收状态 / Acceptance
 
-**mod1–mod86 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
+**mod1–mod87 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
