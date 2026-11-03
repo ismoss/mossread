@@ -21,6 +21,10 @@
 按版本简述对用户可见的变化；使用方法见 [README](../README.zh-CN.md)。
 User-visible changes by release; see [README](../README.md) for usage.
 
+## 2026-11-03 · 二改 mod84
+
+- **-mod84（2026-11-03，3,270,432B / `1880735f…72ce`，WebP 图片支持）**：新增 **WebP 解码**（移植 PageIsle 的 `read_pico_webp`，libwebp 1.5.0 解码子集）——**书内封面/插图、TF 图片页、壁纸（竖/横槽）、阅读背景、文件页**都支持 `.webp`；按 RIFF/VP8X/VP8/VP8L 头取尺寸，解码走 RGB565 后复用原裁剪缩放路径。TF WebP 文件 >12MB 不预览，解码平面受组件像素上限约束（PSRAM 峰值有界）。渐进式 JPEG 仍走原 JPEGDEC 1/8 路径，lowzag 高清解码留待下一块。真机待验。
+
 ## 2026-11-03 · 二改 mod83
 
 - **-mod83（2026-11-03，3,207,312B / `3c9b8a2d…7720`，电源键翻页手感）**：①阅读正文开启「电源键翻页」后，**只有轻点（按住 < 0.5s）才翻页**；按住更久（到 PMU 1.5s 长按之前）直接**息屏**，不必再等 1.5 秒——原来 0–1.5s 全按短按处理，所以想息屏时常被当成翻页。②**工具栏或任何阅读面板打开时，点电源键＝息屏，不再翻页**。实现：新增 `read_pico_pmu_last_key_held_ms()` 暴露 PMU `KEY_SHORT/KEY_LONG` 的 `held_ms`，主循环按 `APP_READER_POWER_TAP_MAX_MS`（500ms）拆分；`on_power_short` 仅在裸正文生效，面板打开时返回 NONE 走锁屏。真机待验。
