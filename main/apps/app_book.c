@@ -7446,6 +7446,12 @@ static void book_on_exit(app_ctx_t* ctx) {
     s_image_zoom_page = SIZE_MAX;
     s_shelf_key_mode=s_shelf_key_paint_pending=false;s_shelf_key_delta=s_shelf_key_pressed=0;
     book_cover_jobs_cancel(s_cover_generation);s_cover_generation=0;
+    // 离页归还书架的可重建渲染缓存（灰阶封面 / 快刷位图 / 相邻页预取缓冲），把 PSRAM 让给其它页面；
+    // 回书架时从磁盘封面缓存快速重建，不重新解码原图。
+    // Release rebuildable shelf render caches (gray covers, fast bitmaps, adjacent-page prefetch) so other
+    // pages get the PSRAM; re-entry rebuilds quickly from the on-disk cover cache, not the source image.
+    invalidate_covers();
+    free(s_prefetch_px); s_prefetch_px = NULL; s_prefetch_next_ms = 0;
     shelf_category_remember(ctx);
     s_category_menu=false;
     s_reader_tap.pending = false;

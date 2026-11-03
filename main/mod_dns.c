@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "cJSON.h"
+#include "esp_attr.h"
 #include "esp_crt_bundle.h"
 #include "esp_err.h"
 #include "esp_http_client.h"
@@ -47,7 +48,9 @@ static mod_dns_entry_t s_entries[MOD_DNS_MAX] = {
 static int s_count = 6;
 static char s_saved_label[sizeof(s_entries[0].name)];
 static volatile mod_dns_fetch_state_t s_fetch_state;
-static char s_fetch_body[4096];
+// 在线 DNS 列表抓取缓冲（一次性、非热路径）放 PSRAM，省内部 SRAM。
+// The one-shot online DNS list fetch buffer lives in PSRAM to save internal SRAM.
+static EXT_RAM_BSS_ATTR char s_fetch_body[4096];
 static size_t s_fetch_length;
 static char s_fetch_error[80];
 
