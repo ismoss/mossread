@@ -133,6 +133,8 @@ static struct {uint8_t *gray;} test_image={.gray=(uint8_t*)"gray"},*s_page_image
 #define BOOK_TOC_ROWS 12
 #define E0470_TURN_RTL 1
 #define E0470_TURN_LTR -1
+#define E0470_TURN_TTB 2
+#define E0470_TURN_BTT 3
 #define E0470_TURN_FAST_TICK_US 14000
 static int test_tick_us=12000,test_tick_sets;
 static int e0470_page_turn_tick_us(void){return test_tick_us;}
@@ -143,6 +145,7 @@ static unsigned book_chapter_count(void){return 2;}
 static bool app_settings_reader_hide_images(void){return test_hide_images;}
 static uint8_t app_settings_reader_full_pages(void){return test_full_pages;}
 static int app_settings_reader_turn_effect(void){return test_effect;}
+static int app_settings_reader_vertical_turn(void){return 0;}
 static void save_progress(void){}
 static void skip_hidden_image_pages(app_ctx_t *ctx,int dir){(void)ctx;(void)dir;}
 static bool load_chapter(app_ctx_t *ctx,unsigned chapter,int off,bool last){(void)ctx;(void)off;if(test_load_failed)return false;s_chapter=chapter;s_page=last?1:0;return true;}

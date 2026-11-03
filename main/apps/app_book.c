@@ -693,6 +693,10 @@ static void reader_relayout_keep_page(int rotation) {
 static void reader_apply_rotation(int rotation) {
     if (rotation == s_reader_layout_rot) return;
     reader_relayout_keep_page(rotation);
+    // 换向后下一帧整屏 GC16 清一次残影（旋转后旧方向的内容若只做差分刷新会叠字/花屏）。
+    // Force one full GC16 on the next present after a rotation change; a diff-only refresh over the
+    // old orientation leaves ghosting / doubled text.
+    s_reader_cleanup = true;
 }
 // 画屏前的统一对账：正文/目录/同向面板参与期望方向，其它视图一律回竖屏。
 // Reconcile before painting: body/TOC/native panels take the desired rotation, every other view portrait.
@@ -744,8 +748,10 @@ static bool reader_orient_tick(app_ctx_t* ctx) {
     }
     if (!app_settings_reader_adaptive()) return false;
     if (s_orient_locked) {
-        // 锁定期间保持冻结方向（含深睡恢复后）。
-        if (reader_orient_body() && s_reader_layout_rot != s_orient_desired)
+        // 锁定期间保持冻结方向；但只在"裸正文"里强制，面板/工具栏打开时不抢转，
+        // 否则会和面板绘制互相拉扯、叠加出残影。
+        if (s_reader_panel == READER_PANEL_NONE && !s_toolbar && !s_clear_confirm &&
+            reader_orient_body() && s_reader_layout_rot != s_orient_desired)
             reader_apply_rotation(s_orient_desired);
         return false;
     }
@@ -5899,7 +5905,11 @@ static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
                            (app_settings_reader_turn_effect() == 1 || app_settings_reader_turn_effect() == 3) &&
                            from_text_frame &&
                            book_layout_page_image_count(s_page) == 0 && !app_settings_book_background_path()[0];
-    s_water_turn_dir = dir > 0 ? E0470_TURN_RTL : E0470_TURN_LTR;
+    // 上下翻页模式用水波纹时，波纹方向也跟着上/下走；左右模式保持 RTL/LTR。
+    // In vertical turn mode the ripple follows up/down (TTB/BTT); horizontal keeps RTL/LTR.
+    s_water_turn_dir = app_settings_reader_vertical_turn()
+        ? (dir > 0 ? E0470_TURN_BTT : E0470_TURN_TTB)
+        : (dir > 0 ? E0470_TURN_RTL : E0470_TURN_LTR);
     return chrome_changed ? APP_REDRAW_PAGE : redraw;
 }
 
@@ -6522,8 +6532,12 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 if (app_settings_reader_adaptive()) {
                     s_orient_locked = !s_orient_locked;
                     app_settings_set_reader_orient_lock(s_orient_locked);
-                    if (s_orient_locked)
+                    if (s_orient_locked) {
+                        // 锁定必须冻结"当前"方向（尤其是 180°）：把期望方向对齐当前布局，
+                        // 否则 tick 会按旧的期望方向把它拉回竖屏，看起来像没锁上。
+                        s_orient_desired = s_reader_layout_rot;
                         app_settings_set_reader_orient_lock_rot((uint8_t)s_reader_layout_rot);
+                    }
                 } else {
                     reader_apply_rotation(reader_manual_next_rot());
                 }

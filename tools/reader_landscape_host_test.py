@@ -36,6 +36,7 @@ unit += r'''
 // 对账状态机的替身：记录锚定重排与旋转设置，正文几何用横屏标记推导。
 // State-machine stands-ins: record anchored relayouts; viewport follows the layout flag.
 static bool s_reader_landscape_layout;
+static bool s_reader_cleanup;
 static int s_view, s_reader_panel;
 static const char *s_text;
 static bool s_clear_confirm;
