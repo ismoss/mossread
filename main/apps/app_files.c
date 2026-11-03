@@ -50,7 +50,7 @@
 
 #define FILE_MAX 96
 #define FILE_ROWS 9
-typedef struct { char path[288]; char name[128]; off_t size; bool is_dir; } file_item_t;
+typedef struct { char path[288]; char name[128]; off_t size; int64_t mtime; bool is_dir; } file_item_t;
 // 文件列表放 PSRAM：内部 RAM 已被静态占用到约 90%，而 BLE 控制器只能用内部 RAM，
 // 列表这类大数组没必要跟它抢。
 // The file list lives in PSRAM. Internal RAM is already around 90% statically used and the BLE
@@ -83,6 +83,11 @@ static bool s_sd_format_confirm;
 static char s_sd_notice[64];
 typedef enum { FILE_VIEW_LIST, FILE_VIEW_ACTIONS, FILE_VIEW_RENAME, FILE_VIEW_MOVE } file_view_t;
 static file_view_t s_view;
+// 文件列表排序：文件夹恒在前，组内按所选键升降序（rc103 文件管理套件·排序）。点表头摘要循环切换。
+// File list sort: folders always first; within a group sort by the chosen key asc/desc. Tap the header
+// summary to cycle. Folder-first is preserved, so directory browsing stays predictable.
+typedef enum { SORT_NAME_ASC, SORT_NAME_DESC, SORT_TIME_DESC, SORT_TIME_ASC, SORT_SIZE_DESC, SORT_SIZE_ASC, SORT_COUNT } file_sort_t;
+static file_sort_t s_sort = SORT_NAME_ASC;
 static file_item_t s_selected;
 static bool s_delete_confirm;
 static int s_move_origin_folder, s_move_origin_page;
@@ -391,11 +396,34 @@ static bool supported(int folder, const char *name) {
     return !strcasecmp(ext, ".ttf") || !strcasecmp(ext, ".otf");
 }
 
+static const char *files_sort_label(void) {
+    switch (s_sort) {
+        case SORT_NAME_DESC: return "名称↓";
+        case SORT_TIME_DESC: return "时间↓";
+        case SORT_TIME_ASC:  return "时间↑";
+        case SORT_SIZE_DESC: return "大小↓";
+        case SORT_SIZE_ASC:  return "大小↑";
+        default:             return "名称↑";
+    }
+}
 static int compare_files(const void *left, const void *right) {
     const file_item_t *a = left, *b = right;
-    if (a->is_dir != b->is_dir) return a->is_dir ? -1 : 1;
-    return strcasecmp(a->name, b->name);
+    if (a->is_dir != b->is_dir) return a->is_dir ? -1 : 1;   // 文件夹恒在前 / folders first
+    int c = 0;
+    switch (s_sort) {
+        case SORT_NAME_DESC: c = -strcasecmp(a->name, b->name); break;
+        case SORT_TIME_DESC: c = (a->mtime < b->mtime) - (a->mtime > b->mtime); break;
+        case SORT_TIME_ASC:  c = (a->mtime > b->mtime) - (a->mtime < b->mtime); break;
+        case SORT_SIZE_DESC: c = (a->size < b->size) - (a->size > b->size); break;
+        case SORT_SIZE_ASC:  c = (a->size > b->size) - (a->size < b->size); break;
+        default:             c = strcasecmp(a->name, b->name); break;   // SORT_NAME_ASC
+    }
+    // 同一键值（如相同时间/大小）再按名称稳定排。/ Tie-break by name for a stable order.
+    return c ? c : strcasecmp(a->name, b->name);
 }
+// 排序切换按钮：文件页表头右侧摘要行（y≈172，行区从 214 起，不冲突）。
+// Sort toggle: the header summary line (y≈172); list rows start at 214, so no overlap.
+static EpdRect files_sort_rect(void) { return (EpdRect){360, 156, 288, 36}; }
 
 static void scan_folder(int folder) {
     if (!files_alloc()) return;
@@ -417,9 +445,10 @@ static void scan_folder(int folder) {
             is_dir = S_ISDIR(st.st_mode);
             is_file = S_ISREG(st.st_mode);
             item->size = st.st_size;
+            item->mtime = (int64_t)st.st_mtime;
         } else {
             DIR *probe = opendir(item->path);
-            if (probe) { is_dir = true; item->size = 0; closedir(probe); }
+            if (probe) { is_dir = true; item->size = 0; item->mtime = 0; closedir(probe); }
         }
         if (!is_dir && !is_file) continue;
         if (s_view == FILE_VIEW_MOVE && !is_dir) continue;
@@ -608,7 +637,7 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         ui_text(fb, 36, 172, 20, path, EPD_DRAW_ALIGN_LEFT, false);
         int folders = 0, files = 0;
         for (int i = 0; i < s_count; ++i) s_files[i].is_dir ? ++folders : ++files;
-        char summary[48]; snprintf(summary, sizeof(summary), "%d个文件夹 · %d个文件", folders, files);
+        char summary[64]; snprintf(summary, sizeof(summary), "%d夹·%d文件·%s", folders, files, files_sort_label());
         ui_text(fb, 648, 172, 20, summary, EPD_DRAW_ALIGN_RIGHT, false);
         file_rule(fb, 36, 202, 612);
         if (s_message[0] && s_folder != 3) ui_text(fb, 36, 238, 27, s_message, EPD_DRAW_ALIGN_LEFT, false);
@@ -1002,6 +1031,13 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
                 }else snprintf(s_message,sizeof(s_message),"保存失败或路径过长，请重试");
             }
             s_counts[0]=count_root(0);s_counts[2]=count_root(2);
+            return APP_REDRAW_PAGE;
+        }
+        // 点表头摘要切换排序。/ Tap the header summary to cycle the sort order.
+        if (!long_press && ui_rect_hit(files_sort_rect(), ev->x0, ev->y0)) {
+            s_sort = (file_sort_t)((s_sort + 1) % SORT_COUNT);
+            qsort(s_files, s_count, sizeof(s_files[0]), compare_files);
+            s_page = 0;
             return APP_REDRAW_PAGE;
         }
         int row = (int)(ev->y0 - 214) / 88;
