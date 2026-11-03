@@ -80,7 +80,7 @@ static bool image_pixels_rot(uint8_t *fb, uint8_t *pixels, const char *path, Epd
         return false;
     const char *ext = strrchr(path, '.');
     bool png = ext && !strcasecmp(ext, ".png");
-    if (!ext || (!png && strcasecmp(ext, ".jpg") && strcasecmp(ext, ".jpeg"))) return false;
+    if (!ext || (!png && strcasecmp(ext, ".jpg") && strcasecmp(ext, ".jpeg") && strcasecmp(ext, ".webp"))) return false;
     struct stat st;
     if (stat(path, &st) || st.st_size <= 0 || (uint64_t)st.st_size > BOOK_IMAGE_FILE_MAX) return false;
     unsigned source_w = 0, source_h = 0;
@@ -316,7 +316,7 @@ static bool avatar_cache_header(const char *path,int side,wallpaper_cache_t *hea
     struct stat st;
     const char *ext=path?strrchr(path,'.'):NULL;
     if(!path||strncmp(path,"/sdcard/",8)||side<1||side>128||!ext||
-       (strcasecmp(ext,".png")&&strcasecmp(ext,".jpg")&&strcasecmp(ext,".jpeg"))||
+       (strcasecmp(ext,".png")&&strcasecmp(ext,".jpg")&&strcasecmp(ext,".jpeg")&&strcasecmp(ext,".webp"))||
        stat(path,&st)||!S_ISREG(st.st_mode)||st.st_size<=0||(uint64_t)st.st_size>BOOK_IMAGE_FILE_MAX)return false;
     *header=(wallpaper_cache_t){.magic=AVATAR_CACHE_MAGIC,.version=1,.width=side,.height=side,.bytes=(uint32_t)side*side,.key=wallpaper_key(path,&st)};
     snprintf(cache_path,160,UI_WALLPAPER_CACHE_PARENT "/avatars/avatar-%d.bin",side);

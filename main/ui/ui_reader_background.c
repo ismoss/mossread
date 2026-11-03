@@ -33,7 +33,7 @@ bool ui_reader_background_prepare(const char *path) {
     const char *ext = strrchr(path, '.');
     bool png = ext && !strcasecmp(ext, ".png");
     unsigned source_w = 0, source_h = 0;
-    if (!ext || (!png && strcasecmp(ext, ".jpg") && strcasecmp(ext, ".jpeg")) ||
+    if (!ext || (!png && strcasecmp(ext, ".jpg") && strcasecmp(ext, ".jpeg") && strcasecmp(ext, ".webp")) ||
         !book_image_file_dimensions(path, png, &source_w, &source_h) || !source_w || !source_h) return false;
     const size_t pixels = (size_t)w * h, packed = (pixels + 1) / 2;
     const unsigned caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;

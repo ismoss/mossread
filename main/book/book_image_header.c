@@ -29,11 +29,73 @@ bool book_jpeg_frame(const uint8_t *data, size_t size, uint8_t *sof,
     return false;
 }
 
+/* ---- WebP 头 / WebP header ---- */
+
+static uint32_t webp_le32(const uint8_t *p) {
+    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+}
+
+bool book_webp_is(const uint8_t *data, size_t size) {
+    return data && size >= 12 && !memcmp(data, "RIFF", 4) && !memcmp(data + 8, "WEBP", 4);
+}
+
+// 按 RIFF 块走到第一个能给尺寸的块：VP8X 画布、VP8（有损帧头）、VP8L（无损位头）。
+// Walk the RIFF chunks to the first one that carries dimensions: VP8X canvas, VP8 lossy, VP8L.
+bool book_webp_frame(const uint8_t *data, size_t size, unsigned *width, unsigned *height) {
+    if (!book_webp_is(data, size)) return false;
+    size_t at = 12;
+    while (at + 8 <= size) {
+        const uint8_t *tag = data + at;
+        const uint32_t length = webp_le32(data + at + 4);
+        const size_t payload = at + 8;
+        if (!memcmp(tag, "VP8X", 4)) {
+            if (length < 10 || size - payload < 10) return false;
+            const unsigned w = (unsigned)data[payload + 4] | (unsigned)data[payload + 5] << 8 |
+                               (unsigned)data[payload + 6] << 16;
+            const unsigned h = (unsigned)data[payload + 7] | (unsigned)data[payload + 8] << 8 |
+                               (unsigned)data[payload + 9] << 16;
+            if (width) *width = w + 1;
+            if (height) *height = h + 1;
+            return true;
+        }
+        if (!memcmp(tag, "VP8 ", 4)) {
+            // 3 字节帧标签 + 0x9d 0x01 0x2a 起始码 + 14 位宽 + 14 位高。
+            // Three-byte frame tag, the 0x9d 0x01 0x2a start code, then 14-bit width and height.
+            if (length < 10 || size - payload < 10 || data[payload + 3] != 0x9d || data[payload + 4] != 0x01 ||
+                data[payload + 5] != 0x2a) return false;
+            const unsigned w = ((unsigned)data[payload + 6] | (unsigned)data[payload + 7] << 8) & 0x3fff;
+            const unsigned h = ((unsigned)data[payload + 8] | (unsigned)data[payload + 9] << 8) & 0x3fff;
+            if (!w || !h) return false;
+            if (width) *width = w;
+            if (height) *height = h;
+            return true;
+        }
+        if (!memcmp(tag, "VP8L", 4)) {
+            if (length < 5 || size - payload < 5 || data[payload] != 0x2f) return false;
+            const uint32_t bits = webp_le32(data + payload + 1);
+            if (width) *width = (unsigned)(bits & 0x3fff) + 1;
+            if (height) *height = (unsigned)((bits >> 14) & 0x3fff) + 1;
+            return true;
+        }
+        if (length > size - payload) return false;
+        const size_t next = payload + length + (length & 1u);  // 块按偶数字节对齐 / chunks are even-padded
+        if (next <= at) return false;
+        at = next;
+    }
+    return false;
+}
+
 bool book_image_dimensions(const uint8_t *data, size_t size, bool png,
                            unsigned *width, unsigned *height) {
     if (!data || !width || !height) return false;
     *width = *height = 0;
-    if (png) {
+    if (book_webp_is(data, size)) {
+        // WebP 的尺寸在 VP8X/VP8/VP8L 头块里，按签名分派（png 标记对它无意义）。
+        // WebP sizes live in the VP8X/VP8/VP8L header chunk; dispatch by signature (the png flag is moot).
+        unsigned frame_width = 0, frame_height = 0;
+        if (!book_webp_frame(data, size, &frame_width, &frame_height)) return false;
+        *width = frame_width; *height = frame_height;
+    } else if (png) {
         static const uint8_t signature[8] = {137,80,78,71,13,10,26,10};
         if (size < 24 || memcmp(data, signature, 8) || memcmp(data + 12, "IHDR", 4)) return false;
         *width = (uint32_t)data[16] << 24 | (uint32_t)data[17] << 16 | (uint32_t)data[18] << 8 | data[19];

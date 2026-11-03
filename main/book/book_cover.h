@@ -39,6 +39,11 @@ bool book_image_file_grayscale(const char *path, bool png, unsigned width, unsig
 
 bool book_jpeg_frame(const uint8_t *data, size_t size, uint8_t *sof, unsigned *width, unsigned *height);
 
+/// 是否是 WebP（RIFF....WEBP）。/ Whether the bytes are WebP (RIFF....WEBP).
+bool book_webp_is(const uint8_t *data, size_t size);
+/// 从 WebP 头取宽高，不解码正文；VP8X/VP8/VP8L 三种块都认。/ WebP header dimensions without decoding (VP8X/VP8/VP8L).
+bool book_webp_frame(const uint8_t *data, size_t size, unsigned *width, unsigned *height);
+
 /// 列表封面缓存保留完整原比例；输出不超过176×240，宽高返回有效像素区。/ Cache uncropped list covers, bounded to 176x240, returning the valid pixel dimensions.
 bool book_cover_load_list_gray(const char *path, const char *title, const char *author,
                                uint8_t out[BOOK_COVER_W * BOOK_COVER_H], bool allow_decode,

@@ -2311,7 +2311,7 @@ static void reader_background_scan(void) {
     s_background_notice[0] = 0; s_background_ready = false;
     s_background_preview_notice[0] = 0; s_background_prepare_pending = false;
     DIR *dir = opendir("/sdcard/pictures");
-    if (!dir) { copy_text(s_background_notice, sizeof(s_background_notice), "请在 pictures 中放入 JPG 或 PNG 图片"); return; }
+    if (!dir) { copy_text(s_background_notice, sizeof(s_background_notice), "请在 pictures 中放入 JPG / PNG / WebP 图片"); return; }
     // A bounded catalogue, independent of book count. No image data in the catalogue.
     s_backgrounds = heap_caps_calloc(128, sizeof(*s_backgrounds), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!s_backgrounds) copy_text(s_background_notice, sizeof(s_background_notice), "内存不足，请关闭图书后重试");
@@ -2320,7 +2320,7 @@ static void reader_background_scan(void) {
         // AppleDouble ._ files and other hidden metadata are not images.
         if (ent->d_name[0] == '.') continue;
         const char *ext = strrchr(ent->d_name, '.');
-        if (!ext || (strcasecmp(ext, ".jpg") && strcasecmp(ext, ".jpeg") && strcasecmp(ext, ".png"))) continue;
+        if (!ext || (strcasecmp(ext, ".jpg") && strcasecmp(ext, ".jpeg") && strcasecmp(ext, ".png") && strcasecmp(ext, ".webp"))) continue;
         char path[288]; struct stat st;
         int n = snprintf(path, sizeof(path), "/sdcard/pictures/%s", ent->d_name);
         if (n < 0 || n >= (int)sizeof(path) || stat(path, &st) || !S_ISREG(st.st_mode) || st.st_size <= 0) continue;
@@ -2333,7 +2333,7 @@ static void reader_background_scan(void) {
         if (!strcmp(s_backgrounds[i].path, app_settings_book_background_path())) s_background_selected = i;
     s_background_page = s_background_selected / READER_BACKGROUND_ROWS;
     if (!s_background_count && !s_background_notice[0])
-        copy_text(s_background_notice, sizeof(s_background_notice), "pictures 中暂无 JPG 或 PNG 图片");
+        copy_text(s_background_notice, sizeof(s_background_notice), "pictures 中暂无 JPG / PNG / WebP 图片");
 }
 static int reader_background_pages(void) {
     return s_background_count ? (s_background_count + READER_BACKGROUND_ROWS - 1) / READER_BACKGROUND_ROWS : 1;

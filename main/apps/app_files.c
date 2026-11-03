@@ -387,7 +387,7 @@ static bool supported(int folder, const char *name) {
     const char *ext = strrchr(name, '.');
     if (!ext) return false;
     if (folder == 0) return !strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt");
-    if (folder == 1) return !strcasecmp(ext, ".jpg") || !strcasecmp(ext, ".jpeg") || !strcasecmp(ext, ".png");
+    if (folder == 1) return !strcasecmp(ext, ".jpg") || !strcasecmp(ext, ".jpeg") || !strcasecmp(ext, ".png") || !strcasecmp(ext, ".webp");
     return !strcasecmp(ext, ".ttf") || !strcasecmp(ext, ".otf");
 }
 
@@ -790,7 +790,7 @@ static void open_selected(app_ctx_t *ctx) {
     if (!strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt")) {
         extern const app_desc_t app_book;
         if (app_book_request_open(s_selected.path)) ctx->request_app = &app_book;
-    } else if (!strcasecmp(ext, ".jpg") || !strcasecmp(ext, ".jpeg") || !strcasecmp(ext, ".png")) {
+    } else if (!strcasecmp(ext, ".jpg") || !strcasecmp(ext, ".jpeg") || !strcasecmp(ext, ".png") || !strcasecmp(ext, ".webp")) {
         extern const app_desc_t app_image;
         if (app_image_request_open(s_selected.path)) ctx->request_app = &app_image;
     } else if (!strcasecmp(ext, ".ttf") || !strcasecmp(ext, ".otf")) {

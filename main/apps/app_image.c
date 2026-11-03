@@ -60,7 +60,7 @@ static bool image_name(const char *name, bool *png) {
     const char *ext = strrchr(name, '.');
     if (!ext) return false;
     *png = !strcasecmp(ext, ".png");
-    return *png || !strcasecmp(ext, ".jpg") || !strcasecmp(ext, ".jpeg");
+    return *png || !strcasecmp(ext, ".jpg") || !strcasecmp(ext, ".jpeg") || !strcasecmp(ext, ".webp");
 }
 
 static void scan_dir(const char *root) {

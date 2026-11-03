@@ -6,6 +6,8 @@ set(main_requires
     espressif__esp_jpeg
     # 渐进式 JPEG；基线仍走 esp_jpeg。/ Progressive JPEG; baseline stays on esp_jpeg.
     jpegdec
+    # WebP 解码子集（libwebp 1.5.0 dec/dsp/utils；只依赖 heap）。/ WebP decoder subset.
+    read_pico_webp
     espressif__libpng
     espressif__zlib
     espressif__esp_tinyusb
