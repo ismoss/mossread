@@ -746,7 +746,7 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
             if (s_select_mode) {
                 ui_text_vc(fb, r_multi.x + r_multi.width / 2, 107, 22, "取消", EPD_DRAW_ALIGN_CENTER, false);
                 ui_text_vc(fb, r_mid.x + r_mid.width / 2, 107, 22, "全选", EPD_DRAW_ALIGN_CENTER, false);
-                char del[20]; snprintf(del, sizeof(del), "删%u", (unsigned)selected_count());
+                char del[20]; snprintf(del, sizeof(del), "删除%u", (unsigned)selected_count());
                 ui_text_vc(fb, r_right.x + r_right.width / 2, 107, 22, del, EPD_DRAW_ALIGN_CENTER, false);
             } else {
                 ui_text_vc(fb, r_multi.x + r_multi.width / 2, 107, 22, "多选", EPD_DRAW_ALIGN_CENTER, false);
@@ -838,15 +838,15 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
             snprintf(usage, sizeof(usage), "请检查 TF 卡");
         }
         ui_text(fb, 624, 189, 21, total, EPD_DRAW_ALIGN_RIGHT, false);
-        ui_text(fb, 58, 230, 19, usage, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 58, 224, 19, usage, EPD_DRAW_ALIGN_LEFT, false);
         {
             char bstat[64];
             if (!s_book_stat_done) snprintf(bstat, sizeof(bstat), "书籍统计…");
             else if (s_book_stat_count) { char amt[16]; storage_amount(amt, sizeof(amt), s_book_stat_bytes); snprintf(bstat, sizeof(bstat), "书籍 %u 本 · %s", s_book_stat_count, amt); }
             else snprintf(bstat, sizeof(bstat), "书籍 0 本");
-            ui_text(fb, 58, 284, 20, bstat, EPD_DRAW_ALIGN_LEFT, false);
+            ui_text(fb, 58, 268, 20, bstat, EPD_DRAW_ALIGN_LEFT, false);
         }
-        EpdRect capacity = {58, 262, 566, 6};
+        EpdRect capacity = {58, 250, 566, 6};
         ui_fill_round_rect(fb, capacity, 3, 0xa0);
         if (storage_space_valid(&s_sd)) {
             capacity.width = (int)((s_sd.filesystem_bytes - s_sd.free_bytes) * 566 / s_sd.filesystem_bytes);

@@ -18,3 +18,13 @@ static inline bool book_file_path_supported(const char *path) {
     return ext && (!strcasecmp(ext, ".txt") || !strcasecmp(ext, ".epub") ||
                    !strcasecmp(ext, ".md") || !strcasecmp(ext, ".markdown"));
 }
+
+/// 划线导出产物（新目录 /mossread_notes/ 或旧版 books/highlights.md|txt），不算书、不进书架/统计。
+/// Highlight export artifacts (the /mossread_notes/ dir, or legacy books/highlights.md|txt) are not books.
+static inline bool book_file_path_export_artifact(const char *path) {
+    if (!path) return false;
+    if (strstr(path, "/mossread_notes/")) return true;
+    const char *base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    return !strcasecmp(base, "highlights.md") || !strcasecmp(base, "highlights.txt");
+}

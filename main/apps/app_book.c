@@ -5492,6 +5492,7 @@ static void scan_dir_chunk(int64_t deadline) {
         if (!S_ISREG(st.st_mode)) continue;
         const char *ext = strrchr(ent->d_name, '.');
         if (!book_file_path_supported(path)) continue;
+        if (book_file_path_export_artifact(path)) continue; // 划线导出产物不算书 / skip highlight export files
         // 显式移出书架的书不再列入；文件仍在存储卡上，随时可以重新读回书架。
         // Books the user removed stay off the shelf; the file stays on the card and reading it
         // again puts it back.
@@ -5544,6 +5545,15 @@ static bool shelf_backfill_visit(const char* path, const book_progress_t* progre
     // 历史可能来自其他固件；只补入当前阅读器支持的真实文件格式。
     // History may come from another firmware; admit only file formats this reader supports.
     if (!book_file_path_supported(path)) return true;
+    if (book_file_path_export_artifact(path)) return true;
+    // 只把“书籍目录/内置/旧 book 目录”里的书补回书架；根目录或导出目录等别处的散落文件不进书架，
+    // 与「书籍 N 本」统计口径一致。/ Only backfill books under the book roots, so counts stay consistent.
+    {
+        const char *bd = app_settings_books_dir();
+        bool in_books = (bd && bd[0] && !strncmp(path, bd, strlen(bd))) ||
+                        !strncmp(path, "/sdcard/book/", 13) || !strncmp(path, "/flash/", 7);
+        if (!in_books) return true;
+    }
     for (int i = 0; i < scan_count(); ++i)
         if (!strcmp(scan_items()[i].path, path)) return true;   // 书根目录已经收录
     struct stat st;
