@@ -200,7 +200,7 @@ static bool file_pager_event(app_ctx_t *ctx,const ui_gesture_event_t *ev,app_red
     return true;
 }
 static EpdRect home_transfer_rect(int index) {
-    return (EpdRect){36 + index * 208, 336, 196, 92};
+    return (EpdRect){36 + index * 208, 350, 196, 92};
 }
 
 // 存储卡卡片的位置，绘制与命中测试共用一份，免得两处各写一个坐标。
