@@ -95,6 +95,11 @@ static bool s_batch_confirm;
 static int selected_count(void);
 static void clear_selection(void);
 static void batch_delete_selected(void);
+static char (*s_batch_src)[288];
+static int s_batch_src_count;
+static void batch_src_clear(void);
+static void batch_move_begin(void);
+static app_redraw_t batch_move_to_dir(void);
 static file_item_t s_selected;
 static bool s_delete_confirm;
 static int s_move_origin_folder, s_move_origin_page;
@@ -386,6 +391,7 @@ static void leave_move(bool changed) {
     s_view = FILE_VIEW_LIST;
     scan_folder(s_folder >= 0 ? s_folder : 3);
     if (!changed) s_page = s_move_origin_page;
+    batch_src_clear();
 }
 
 static app_redraw_t move_selected(void) {
@@ -414,6 +420,49 @@ static app_redraw_t move_selected(void) {
     book_store_notify_changed();
     leave_move(true);
     snprintf(s_message, sizeof(s_message), "移动完成");
+    return APP_REDRAW_PAGE;
+}
+// 批量移动：先把所选源路径快照进 PSRAM（避免进入目标浏览时 s_files 被替换），再复用 MOVE 视图选目标。
+// Batch move: snapshot the selected source paths to PSRAM (the target browser replaces s_files), then reuse the MOVE view.
+static void batch_src_clear(void) { if (s_batch_src) { free(s_batch_src); s_batch_src = NULL; } s_batch_src_count = 0; }
+static void batch_move_begin(void) {
+    int n = selected_count();
+    if (n <= 0) { snprintf(s_message, sizeof(s_message), "未选择文件"); return; }
+    batch_src_clear();
+    s_batch_src = heap_caps_malloc((size_t)n * 288, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_batch_src) { snprintf(s_message, sizeof(s_message), "内存不足"); return; }
+    s_batch_src_count = 0;
+    for (int i = 0; i < s_count; ++i) {
+        if (!s_files[i].selected) continue;
+        copy_utf8(s_batch_src[s_batch_src_count], 288, s_files[i].path);
+        ++s_batch_src_count;
+    }
+    s_select_mode = false; s_batch_confirm = false;
+    s_move_origin_folder = s_folder; s_move_origin_page = s_page;
+    copy_utf8(s_move_origin_dir, sizeof(s_move_origin_dir), s_dir);
+    copy_utf8(s_dir, sizeof(s_dir), "/sdcard");
+    s_folder = 3; s_view = FILE_VIEW_MOVE; scan_folder(3);
+}
+static app_redraw_t batch_move_to_dir(void) {
+    read_pico_sd_get_info(&s_sd);
+    if (!s_sd.mounted) { snprintf(s_message, sizeof(s_message), "TF 卡不可用"); return APP_REDRAW_PAGE; }
+    unsigned done = 0; bool failed = false;
+    for (int i = 0; i < s_batch_src_count; ++i) {
+        const char *src = s_batch_src[i];
+        const char *base = strrchr(src, '/'); base = base ? base + 1 : src;
+        char dest[288];
+        if (snprintf(dest, sizeof(dest), "%s/%s", s_dir, base) >= (int)sizeof(dest)) { failed = true; continue; }
+        if (!strcmp(dest, src)) continue;
+        if (!moved_settings_fit(src, dest)) { failed = true; continue; }
+        if (file_tree_move(src, dest) == ESP_OK) { sync_moved_settings(src, dest); notify_moved_tree(src, dest, 0); ++done; }
+        else failed = true;
+    }
+    book_store_notify_changed();
+    batch_src_clear();
+    s_view = FILE_VIEW_LIST; s_folder = s_move_origin_folder;
+    copy_utf8(s_dir, sizeof(s_dir), s_move_origin_dir);
+    scan_folder(s_folder >= 0 ? s_folder : 3);
+    snprintf(s_message, sizeof(s_message), failed ? "部分移动失败，已移动 %u 项" : "已移动 %u 项", done);
     return APP_REDRAW_PAGE;
 }
 
@@ -688,16 +737,23 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
                 ui_text_vc(fb, 646, 107, 24, "搜索", EPD_DRAW_ALIGN_RIGHT, false);
             }
         }
-        char path[144];
-        if (s_query[0]) snprintf(path, sizeof(path), "搜索：%s（点按清除）", s_query);
-        else snprintf(path, sizeof(path), "TF卡%s", folder_root(s_folder) + 7);
-        ui_text(fb, 36, 172, 20, path, EPD_DRAW_ALIGN_LEFT, false);
-        int folders = 0, files = 0;
-        for (int i = 0; i < s_count; ++i) s_files[i].is_dir ? ++folders : ++files;
-        char summary[64];
-        if (s_query[0]) snprintf(summary, sizeof(summary), "%d 项", s_count);
-        else snprintf(summary, sizeof(summary), "%d夹·%d文件·%s", folders, files, files_sort_label());
-        ui_text(fb, 648, 172, 20, summary, EPD_DRAW_ALIGN_RIGHT, false);
+        if (s_select_mode) {
+            // 多选时该行改为批量移动入口；右侧显示已选数量。/ In select mode this line is the batch-move entry; right shows the count.
+            ui_text(fb, 36, 172, 20, "→ 移动所选", EPD_DRAW_ALIGN_LEFT, false);
+            char sel[24]; snprintf(sel, sizeof(sel), "已选 %d", selected_count());
+            ui_text(fb, 648, 172, 20, sel, EPD_DRAW_ALIGN_RIGHT, false);
+        } else {
+            char path[144];
+            if (s_query[0]) snprintf(path, sizeof(path), "搜索：%s（点按清除）", s_query);
+            else snprintf(path, sizeof(path), "TF卡%s", folder_root(s_folder) + 7);
+            ui_text(fb, 36, 172, 20, path, EPD_DRAW_ALIGN_LEFT, false);
+            int folders = 0, files = 0;
+            for (int i = 0; i < s_count; ++i) s_files[i].is_dir ? ++folders : ++files;
+            char summary[64];
+            if (s_query[0]) snprintf(summary, sizeof(summary), "%d 项", s_count);
+            else snprintf(summary, sizeof(summary), "%d夹·%d文件·%s", folders, files, files_sort_label());
+            ui_text(fb, 648, 172, 20, summary, EPD_DRAW_ALIGN_RIGHT, false);
+        }
         file_rule(fb, 36, 202, 612);
         if (s_message[0] && s_folder != 3) ui_text(fb, 36, 238, 27, s_message, EPD_DRAW_ALIGN_LEFT, false);
         else if (!s_count) ui_text(fb, 36, 238, 27, "此目录还没有文件", EPD_DRAW_ALIGN_LEFT, false);
@@ -833,7 +889,7 @@ static void on_enter(app_ctx_t *ctx) {
     s_folder = s_requested_folder; s_requested_folder = -1;
     s_view = FILE_VIEW_LIST;
     s_delete_confirm = false;
-    search_close(); s_query[0] = 0; s_select_mode = false; s_batch_confirm = false;
+    search_close(); s_query[0] = 0; s_select_mode = false; s_batch_confirm = false; batch_src_clear();
     snprintf(s_dir, sizeof(s_dir), "/sdcard");
     s_page = 0; s_scan_pending = true;
     read_pico_sd_start_probe();
@@ -1184,7 +1240,7 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         }
         if (ui_rect_hit(file_action_rect(0),ev->x0,ev->y0) || ui_rect_hit(file_action_rect(1),ev->x0,ev->y0)) {
             if (ev->x0 < 342) leave_move(false);
-            else return move_selected();
+            else return s_batch_src_count > 0 ? batch_move_to_dir() : move_selected();
             return APP_REDRAW_PAGE;
         }
         int row = (ev->y0 - 214) / 88;
@@ -1235,6 +1291,7 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         if (!long_press && !s_query[0] && s_view == FILE_VIEW_LIST) {
             if (ui_rect_hit(files_multi_rect(), ev->x0, ev->y0)) { s_select_mode = !s_select_mode; clear_selection(); s_batch_confirm = false; return APP_REDRAW_PAGE; }
             if (s_select_mode) {
+                if (ev->y0 >= 154 && ev->y0 < 196 && ev->x0 < 430) { batch_move_begin(); return APP_REDRAW_PAGE; }
                 if (ui_rect_hit(files_selectall_rect(), ev->x0, ev->y0)) { bool all = selected_count() == s_count; for (int i = 0; i < s_count; ++i) s_files[i].selected = !all; s_batch_confirm = false; return APP_REDRAW_PAGE; }
                 if (ui_rect_hit(files_batchdel_rect(), ev->x0, ev->y0)) {
                     if (!selected_count()) { snprintf(s_message, sizeof(s_message), "未选择文件"); return APP_REDRAW_PAGE; }
@@ -1360,7 +1417,7 @@ static bool files_back_swipe_area(app_ctx_t *ctx,const ui_gesture_event_t *event
     return s_view!=FILE_VIEW_RENAME || event->y0<UI_SYSTEM_KEYBOARD_TOP;
 }
 static void files_before_lock(app_ctx_t *ctx) { (void)ctx;s_pager_pressed=UI_PAGER_NONE;s_pager_paint_pending=false; }
-static void files_exit(app_ctx_t *ctx) { files_before_lock(ctx); ui_keyboard_end(); search_close(); s_query[0] = 0; s_select_mode = false; s_batch_confirm = false; if (s_book_stat_fs) { file_search_close(s_book_stat_fs); s_book_stat_fs = NULL; } }
+static void files_exit(app_ctx_t *ctx) { files_before_lock(ctx); ui_keyboard_end(); search_close(); s_query[0] = 0; s_select_mode = false; s_batch_confirm = false; batch_src_clear(); if (s_book_stat_fs) { file_search_close(s_book_stat_fs); s_book_stat_fs = NULL; } }
 
 const app_desc_t app_files = {
     .binary_ui = false,
