@@ -86,13 +86,14 @@ covers user-visible changes per release; volatile state lives in the untracked
 | P2·Markdown | mod102 | `.md`/`.markdown` 按书籍识别，可列出/打开/管理，按纯文本阅读（渲染后续） |
 | P2·Markdown 渲染 | mod103 | `.md` 去行首 #/> 与内联 */`，`#` 标题作章节（仅 .md，显示层） |
 | 划线·导出增强 | mod104 | 导出 `books/highlights.md`：front matter + 按章分组（可本机 md 阅读/Obsidian） |
+| 划线·选段到字 | mod105 | 选段精确到字（book_layout_page_caret_at 按点取行内字节；点起/终点取字符区间，可跨行；近似均宽） |
 | 品牌 | mod55 | 系统可见名统一为 **mossread**；开机画面换成 mossread 字标 + 内建图元画的星图；热点名 `mossread-XXXX` |
 | 状态与观感 | mod50、mod51 | 设置页网络状态实时刷新；回到锁屏整屏定稿（清掉密码圈圈残影） |
 | 锁屏收尾 | mod52–mod54 | GC16 收尾锁屏面、透明书封横屏适配；**圆点残影真因 = 锁屏图缓存里存过带键盘的帧**（mod53 魔数 +1 并解锁即删缓存），深睡保留锁屏画面；**mod54 修好自动锁屏被后台网络会话卡住**（5 分钟不熄屏的真因）|
 
 ## 进行中 / In flight
 
-- 无（mod104 已发版，等待真机验收；P1 完成；字级划线 8 片+导出增强(94–104)成体系，仅剩「词内逐字拖选」需真机；P2：Markdown 支持+渲染(102/103)；其余 P2 大/险项待真机后再定）
+- 无（mod105 已发版，等待真机验收；P1 完成；字级划线 9 片(94–105)含字符级选择，仅剩「长按拖选」手势（可选）；P2：Markdown(102/103)；其余 P2 大/险项待真机后再定）
 
 ## 待做 / Planned
 
@@ -119,4 +120,4 @@ covers user-visible changes per release; volatile state lives in the untracked
 
 ## 验收状态 / Acceptance
 
-**mod1–mod104 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
+**mod1–mod105 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
