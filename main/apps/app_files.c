@@ -107,6 +107,13 @@ static void search_begin(void);
 static void render_search(uint8_t *fb);
 static app_redraw_t search_paint(app_ctx_t *ctx, bool field);
 static app_redraw_t search_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev);
+// 书籍统计（根页展示书籍数量与总大小）。/ Book stats (count and total size on the root page).
+static file_search_t *s_book_stat_fs;
+static unsigned s_book_stat_count;
+static uint64_t s_book_stat_bytes;
+static bool s_book_stat_done;
+static int64_t s_book_stat_next_ms;
+static void book_stat_start(void);
 static void scan_folder(int folder);
 static bool main_page_visible(app_ctx_t *ctx);
 static bool s_render_secondary;
@@ -713,6 +720,13 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         }
         ui_text(fb, 624, 191, 21, total, EPD_DRAW_ALIGN_RIGHT, false);
         ui_text(fb, 58, 231, 19, usage, EPD_DRAW_ALIGN_LEFT, false);
+        {
+            char bstat[64];
+            if (!s_book_stat_done) snprintf(bstat, sizeof(bstat), "书籍统计…");
+            else if (s_book_stat_count) { char amt[16]; storage_amount(amt, sizeof(amt), s_book_stat_bytes); snprintf(bstat, sizeof(bstat), "书籍 %u 本 · %s", s_book_stat_count, amt); }
+            else snprintf(bstat, sizeof(bstat), "书籍 0 本");
+            ui_text(fb, 58, 282, 20, bstat, EPD_DRAW_ALIGN_LEFT, false);
+        }
         EpdRect capacity = {58, 263, 566, 6};
         ui_fill_round_rect(fb, capacity, 3, 0xa0);
         if (storage_space_valid(&s_sd)) {
@@ -790,7 +804,7 @@ static void on_enter(app_ctx_t *ctx) {
     s_sd_notice[0] = 0;
     for (int i = 0; i < 3; ++i) s_counts[i] = count_root(i);
     if (s_folder >= 0) scan_folder(s_folder);
-    else scan_folder(3);
+    else { scan_folder(3); book_stat_start(); }
     // 已完成首帧目录扫描时不在下一拍重复统计并推整页；挂载/分配未完成仍沿原重试路径。
     // Do not repeat a completed first-frame scan and whole-page present on the next tick; retain mount/allocation retries.
     if(info_status!=ESP_ERR_NOT_FINISHED&&s_files)s_scan_pending=false;
@@ -804,6 +818,7 @@ static void on_media_lost(app_ctx_t *ctx) {
 static void on_media_ready(app_ctx_t *ctx) {
     (void)ctx;
     s_scan_pending = true;
+    if (s_folder < 0) book_stat_start();
 }
 static app_redraw_t rename_paint(app_ctx_t *ctx, bool field);
 static app_redraw_t on_tick(app_ctx_t *ctx) {
@@ -830,6 +845,13 @@ static app_redraw_t on_tick(app_ctx_t *ctx) {
         s_fs_matches = st.matched;
         if (st.done) { file_search_close(s_fs); s_fs = NULL; qsort(s_files, s_count, sizeof(s_files[0]), compare_files); }
         if (st.done || ctx->now_ms - s_search_paint_ms >= 500) { s_search_paint_ms = ctx->now_ms; return APP_REDRAW_PAGE; }
+    }
+    // 根页书籍统计增量步进。/ Incremental book-stat walk on the root page.
+    if (s_folder < 0 && s_book_stat_fs && !s_book_stat_done && ctx->now_ms >= s_book_stat_next_ms) {
+        s_book_stat_next_ms = ctx->now_ms + 500;
+        file_search_step(s_book_stat_fs, 24);
+        if (file_search_stats(s_book_stat_fs).done) { file_search_close(s_book_stat_fs); s_book_stat_fs = NULL; s_book_stat_done = true; }
+        return APP_REDRAW_PAGE;
     }
     if (!s_scan_pending) {
         if (s_folder<0 && s_sd.mounted && !(ctx->touch && ctx->touch->touched) && ctx->now_ms-s_space_poll_ms>=
@@ -1074,6 +1096,21 @@ static app_redraw_t search_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev)
     return result == UI_KEYBOARD_CHANGED ? search_paint(ctx, false) : APP_REDRAW_NONE;
 }
 
+/* ---- 书籍统计 / Book stats ---- */
+static void book_stat_cb(const char *path, const struct stat *info, void *ctx) {
+    (void)ctx;
+    if (!info || !S_ISREG(info->st_mode)) return;
+    const char *ext = strrchr(path, '.'); if (!ext) return;
+    if (strcasecmp(ext, ".epub") && strcasecmp(ext, ".txt")) return;
+    ++s_book_stat_count; s_book_stat_bytes += (uint64_t)info->st_size;
+}
+static void book_stat_start(void) {
+    if (s_book_stat_fs) { file_search_close(s_book_stat_fs); s_book_stat_fs = NULL; }
+    s_book_stat_count = 0; s_book_stat_bytes = 0; s_book_stat_done = false; s_book_stat_next_ms = 0;
+    s_book_stat_fs = file_search_begin_all(app_settings_books_dir(), book_stat_cb, NULL);
+    if (!s_book_stat_fs) s_book_stat_done = true;
+}
+
 static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
     app_redraw_t pager;
     if(file_pager_event(ctx,ev,&pager))return pager;
@@ -1262,7 +1299,7 @@ static bool files_back_swipe_area(app_ctx_t *ctx,const ui_gesture_event_t *event
     return s_view!=FILE_VIEW_RENAME || event->y0<UI_SYSTEM_KEYBOARD_TOP;
 }
 static void files_before_lock(app_ctx_t *ctx) { (void)ctx;s_pager_pressed=UI_PAGER_NONE;s_pager_paint_pending=false; }
-static void files_exit(app_ctx_t *ctx) { files_before_lock(ctx); ui_keyboard_end(); search_close(); s_query[0] = 0; }
+static void files_exit(app_ctx_t *ctx) { files_before_lock(ctx); ui_keyboard_end(); search_close(); s_query[0] = 0; if (s_book_stat_fs) { file_search_close(s_book_stat_fs); s_book_stat_fs = NULL; } }
 
 const app_desc_t app_files = {
     .binary_ui = false,
