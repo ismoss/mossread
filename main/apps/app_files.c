@@ -89,6 +89,7 @@ static file_view_t s_view;
 // summary to cycle. Folder-first is preserved, so directory browsing stays predictable.
 typedef enum { SORT_NAME_ASC, SORT_NAME_DESC, SORT_TIME_DESC, SORT_TIME_ASC, SORT_SIZE_DESC, SORT_SIZE_ASC, SORT_COUNT } file_sort_t;
 static file_sort_t s_sort = SORT_NAME_ASC;
+static bool s_file_grid;   // 列表/网格视图切换（rc103 套件）。/ List vs grid view.
 static file_item_t s_selected;
 static bool s_delete_confirm;
 static int s_move_origin_folder, s_move_origin_page;
@@ -144,10 +145,18 @@ static int file_message_top(void) {
 static int file_sheet_offset(void) {
     return 0;
 }
+// 网格视图仅在普通文件夹列表生效（移动目标/搜索结果为列表）。/ Grid only in the folder list (not move-target or search results).
+static bool files_grid_active(void) { return s_file_grid && s_view != FILE_VIEW_MOVE && !s_query[0]; }
+static EpdRect files_entry_rect(int row) {
+    if (files_grid_active()) { int col = row % 3, r = row / 3; return (EpdRect){36 + col * 204, 214 + r * 196, 196, 188}; }
+    return (EpdRect){36, 214 + row * 88, 612, 82};
+}
 static int visible_rows(void) {
     int end=s_folder==3||s_view==FILE_VIEW_MOVE?file_action_rect(0).y-16:file_pager_top()-16;
+    if (files_grid_active()) { int rows=(end-214)/196; return rows>0?rows*3:3; }
     return (end-214)/88;
 }
+static int files_entry_hit(int x, int y) { for (int row = 0; row < visible_rows(); ++row) if (ui_rect_hit(files_entry_rect(row), x, y)) return row; return -1; }
 static int root_rows(void) { return 5; }
 static int file_pager_pages(void) {
     int rows=s_folder<0?root_rows():visible_rows();
@@ -444,6 +453,7 @@ static int compare_files(const void *left, const void *right) {
 // 排序切换按钮：文件页表头右侧摘要行（y≈172，行区从 214 起，不冲突）。
 // Sort toggle: the header summary line (y≈172); list rows start at 214, so no overlap.
 static EpdRect files_sort_rect(void) { return (EpdRect){360, 156, 288, 36}; }
+static EpdRect files_grid_rect(void) { return (EpdRect){468, 86, 84, 44}; }
 
 static void scan_folder(int folder) {
     if (!files_alloc()) return;
@@ -659,6 +669,7 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         ui_text_vc(fb, 342, 107, 34, s_view == FILE_VIEW_MOVE ? "选择目标文件夹" : names[s_folder], EPD_DRAW_ALIGN_CENTER, false);
         // 搜索入口（仅普通文件夹列表，非移动目标选择）。/ Search entry (folder list only, not move-target).
         if (s_view == FILE_VIEW_LIST) ui_text_vc(fb, 646, 107, 24, "搜索", EPD_DRAW_ALIGN_RIGHT, false);
+        if (s_view == FILE_VIEW_LIST && !s_query[0]) ui_text(fb, 472, 95, 22, s_file_grid ? "列表" : "网格", EPD_DRAW_ALIGN_LEFT, false);
         char path[144];
         if (s_query[0]) snprintf(path, sizeof(path), "搜索：%s（点按清除）", s_query);
         else snprintf(path, sizeof(path), "TF卡%s", folder_root(s_folder) + 7);
@@ -675,22 +686,30 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         for (int row = 0; row < visible_rows(); ++row) {
             int index = s_page * visible_rows() + row;
             if (index >= s_count) break;
-            int y = 214 + row * 88;
             char name[128]; snprintf(name, sizeof(name), "%s", s_files[index].name);
-            while (*name && ttf_text_width_px(ui_text_effective_px(23), name) > 450) {
-                size_t n = strlen(name) - 1;
-                while (n && ((unsigned char)name[n] & 0xc0) == 0x80) --n;
-                name[n] = 0;
-            }
-            file_icon(fb, 48, y + 20, s_files[index].is_dir);
-            ui_text(fb, 101, y + 11, 23, name, EPD_DRAW_ALIGN_LEFT, false);
             char detail[32]; file_detail(detail, sizeof(detail), &s_files[index]);
-            ui_text(fb, 101, y + 49, 19, detail, EPD_DRAW_ALIGN_LEFT, false);
-            const char *tag = !strcmp(s_files[index].path, app_settings_books_dir()) ? "书籍目录" :
-                              !strcmp(s_files[index].path, app_settings_fonts_dir()) ? "字体目录" : NULL;
-            if (tag) ui_text(fb, 588, y + 35, 18, tag, EPD_DRAW_ALIGN_RIGHT, false);
-            ui_text(fb, 640, y + 30, 22, "›", EPD_DRAW_ALIGN_RIGHT, false);
-            file_rule(fb, 101, y + 82, 547);
+            if (files_grid_active()) {
+                EpdRect r = files_entry_rect(row);
+                fit_name(name, 20, r.width - 20);
+                file_icon(fb, r.x + r.width / 2 - 23, r.y + 24, s_files[index].is_dir);
+                ui_text_vc(fb, r.x + r.width / 2, r.y + 112, 21, name, EPD_DRAW_ALIGN_CENTER, false);
+                ui_text_vc(fb, r.x + r.width / 2, r.y + 152, 17, detail, EPD_DRAW_ALIGN_CENTER, false);
+            } else {
+                int y = 214 + row * 88;
+                while (*name && ttf_text_width_px(ui_text_effective_px(23), name) > 450) {
+                    size_t n = strlen(name) - 1;
+                    while (n && ((unsigned char)name[n] & 0xc0) == 0x80) --n;
+                    name[n] = 0;
+                }
+                file_icon(fb, 48, y + 20, s_files[index].is_dir);
+                ui_text(fb, 101, y + 11, 23, name, EPD_DRAW_ALIGN_LEFT, false);
+                ui_text(fb, 101, y + 49, 19, detail, EPD_DRAW_ALIGN_LEFT, false);
+                const char *tag = !strcmp(s_files[index].path, app_settings_books_dir()) ? "书籍目录" :
+                                  !strcmp(s_files[index].path, app_settings_fonts_dir()) ? "字体目录" : NULL;
+                if (tag) ui_text(fb, 588, y + 35, 18, tag, EPD_DRAW_ALIGN_RIGHT, false);
+                ui_text(fb, 640, y + 30, 22, "›", EPD_DRAW_ALIGN_RIGHT, false);
+                file_rule(fb, 101, y + 82, 547);
+            }
         }
         if (s_folder == 3 || s_view == FILE_VIEW_MOVE) {
             ui_draw_control_frame(fb, file_action_rect(0), 8, UI_GRAY_BLACK);
@@ -1181,6 +1200,8 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         if (!long_press && s_query[0] && ev->y0 >= 154 && ev->y0 < 196) { search_clear(); return APP_REDRAW_PAGE; }
         // 搜索入口（仅普通文件夹列表）。/ Search entry (folder list only).
         if (!long_press && !s_query[0] && s_view == FILE_VIEW_LIST && ui_rect_hit(files_search_entry_rect(), ev->x0, ev->y0)) { search_begin(); return APP_REDRAW_FULL; }
+        // 列表↔网格切换。/ Toggle list vs grid.
+        if (!long_press && !s_query[0] && s_view == FILE_VIEW_LIST && ui_rect_hit(files_grid_rect(), ev->x0, ev->y0)) { s_file_grid = !s_file_grid; s_page = 0; return APP_REDRAW_PAGE; }
         // 点表头摘要切换排序。/ Tap the header summary to cycle the sort order.
         if (!long_press && !s_query[0] && ui_rect_hit(files_sort_rect(), ev->x0, ev->y0)) {
             s_sort = (file_sort_t)((s_sort + 1) % SORT_COUNT);
@@ -1188,9 +1209,9 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
             s_page = 0;
             return APP_REDRAW_PAGE;
         }
-        int row = (int)(ev->y0 - 214) / 88;
+        int row = files_entry_hit(ev->x0, ev->y0);
         int index = s_page * visible_rows() + row;
-        if (ev->y0 >= 214 && row >= 0 && row < visible_rows() && index < s_count) {
+        if (row >= 0 && index < s_count) {
             if (long_press) {
                 s_selected = s_files[index]; s_view = FILE_VIEW_ACTIONS;
                 s_delete_confirm = false; s_message[0] = 0;
