@@ -487,6 +487,7 @@ static int s_highlight_filter; // 0 全部，1..3 按标签筛选 / 0 all, 1..3 
 static bool s_pick_line; // 点正文选段做划线的待选态 / pending: tap body lines to highlight a span
 static bool s_pick_armed; // 已选起点行、等终点行 / start line chosen, awaiting end line
 static size_t s_pick_start, s_pick_end; // 起点/终点行的原文字节范围 / start/end line byte ranges
+static bool s_pick_dragging; // 选段拖选中（按下并移动）/ drag-select in progress
 static const char* const hl_tags[4] = {"无", "重要", "待读", "疑问"};
 typedef struct { char path[288]; } reader_background_item_t;
 static reader_background_item_t *s_backgrounds;
@@ -6338,7 +6339,7 @@ static app_redraw_t apply_reader_option(app_ctx_t* ctx, int kind) {
 static app_redraw_t reader_return(app_ctx_t *ctx) {
     save_progress();
     // 离开正文清掉划线选段待选态与选中项，避免下次误触加划线。/ Clear pending span-pick & selection when leaving the body.
-    s_pick_line = false; s_pick_armed = false; s_highlight_sel = -1;
+    s_pick_line = false; s_pick_armed = false; s_pick_dragging = false; s_highlight_sel = -1;
     if (s_reader_return_home) {
         ui_nav_request(ctx, 0);
         return APP_REDRAW_NONE;
@@ -6753,7 +6754,7 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 s_reader_notice_until = esp_timer_get_time() / 1000 + (ok ? 1600 : 2200);
                 s_highlight_page = 0; s_highlight_sel = -1;
             } else if (ui_rect_hit((EpdRect){w - 176 - 146 - 6, top + 26, 146, 50}, x, y)) {
-                s_pick_line = true; s_pick_armed = false; s_pick_start = s_pick_end = 0;
+                s_pick_line = true; s_pick_armed = false; s_pick_dragging = false; s_pick_start = s_pick_end = 0;
                 s_reader_panel = READER_PANEL_NONE;
                 copy_text(s_reader_notice, sizeof(s_reader_notice), "点开始的一行");
                 s_reader_notice_until = esp_timer_get_time() / 1000 + 2500;
@@ -7734,7 +7735,7 @@ static void on_enter(app_ctx_t* ctx) {
 static void book_on_exit(app_ctx_t* ctx) {
     shelf_scan_abort();
     reader_indent_hold_cancel();
-    s_pick_line = false; s_pick_armed = false; s_highlight_sel = -1;
+    s_pick_line = false; s_pick_armed = false; s_pick_dragging = false; s_highlight_sel = -1;
     // 离开阅读页把旋转交还竖屏；其余页面永远以竖屏绘制。
     // Leaving Books hands the rotation back; every other page always draws portrait.
     reader_rotation_leave();
@@ -8205,6 +8206,50 @@ static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* even
         reader_touch_to_landscape(&rotated.x, &rotated.y);
         rotated.type = reader_gesture_to_landscape(rotated.type);
         ev = &rotated;
+    }
+    // 选段拖选：armed 后按住拖动、松手成一条（仅阅读正文）。点一下则取一个字。/ Drag to select once armed; a tap selects one char.
+    if (s_view == READING && s_reader_panel == READER_PANEL_NONE && s_pick_line) {
+        if (ev->type == UI_GESTURE_PRESS) {
+            size_t c = 0;
+            if (ui_rect_hit(body_rect(), ev->x0, ev->y0) && book_layout_page_caret_at(s_page, ev->x0, ev->y0, &c)) {
+                s_pick_start = c; s_pick_end = c; s_pick_armed = true; s_pick_dragging = true;
+                copy_text(s_reader_notice, sizeof(s_reader_notice), "拖到结尾松手");
+                s_reader_notice_until = esp_timer_get_time() / 1000 + 2500;
+                return APP_REDRAW_PAGE;
+            }
+            s_pick_line = false; s_pick_armed = false; s_pick_dragging = false;
+            return APP_REDRAW_PAGE;
+        }
+        if (ev->type == UI_GESTURE_MOVE) {
+            size_t c = 0;
+            if (s_pick_dragging && book_layout_page_caret_at(s_page, ev->x0, ev->y0, &c)) s_pick_end = c;
+            return APP_REDRAW_NONE;
+        }
+        if (!s_pick_dragging && ev->type == UI_GESTURE_TAP) {
+            size_t c = 0;
+            if (ui_rect_hit(body_rect(), ev->x0, ev->y0) && book_layout_page_caret_at(s_page, ev->x0, ev->y0, &c)) { s_pick_start = c; s_pick_end = c; s_pick_dragging = true; }
+        }
+        if (s_pick_dragging) {
+            s_pick_dragging = false;
+            if (ev->type != UI_GESTURE_CANCEL) {
+                size_t lo = s_pick_start < s_pick_end ? s_pick_start : s_pick_end;
+                size_t hi = s_pick_start < s_pick_end ? s_pick_end : s_pick_start;
+                if (hi <= lo && s_text && lo < s_text_len) {
+                    unsigned char ch = (unsigned char)s_text[lo];
+                    size_t adv = (ch < 0x80) ? 1 : ((ch >> 5) == 0x6 ? 2 : ((ch >> 4) == 0xE ? 3 : 4));
+                    hi = lo + adv; if (hi > s_text_len) hi = s_text_len;
+                }
+                char exc[BOOK_HIGHLIGHT_EXCERPT]; size_t n = 0;
+                if (s_text) for (size_t i = lo; i < s_text_len && i < hi && n + 1 < sizeof(exc); ++i) exc[n++] = s_text[i];
+                exc[n] = 0;
+                bool ok = book_highlight_add((uint16_t)s_chapter, (uint32_t)lo, (uint32_t)hi, exc);
+                copy_text(s_reader_notice, sizeof(s_reader_notice), ok ? "已记选段划线" : "划线保存失败");
+                s_reader_notice_until = esp_timer_get_time() / 1000 + (ok ? 1600 : 2200);
+            }
+            s_pick_line = false; s_pick_armed = false;
+            return APP_REDRAW_PAGE;
+        }
+        return APP_REDRAW_NONE;
     }
     if (s_view == READING && s_reader_panel == READER_PANEL_FONT_RECOVERY)
         return reader_font_recovery_gesture(ctx, ev);
@@ -8808,7 +8853,7 @@ static void before_lock(app_ctx_t* ctx) {
     bool landscape_lock = reader_landscape_active() && (lock_style == 0 || lock_style == 1 || lock_style == 2 || lock_style == 3) &&
                           (rotation == EPD_ROT_LANDSCAPE || rotation == EPD_ROT_INVERTED_LANDSCAPE);
     if (!landscape_lock) reader_rotation_leave();
-    s_pick_line = false; s_pick_armed = false; s_highlight_sel = -1;
+    s_pick_line = false; s_pick_armed = false; s_pick_dragging = false; s_highlight_sel = -1;
     s_shelf_key_mode=s_shelf_key_paint_pending=false;s_shelf_key_delta=s_shelf_key_pressed=0;
     shelf_category_remember(ctx);
     s_category_menu=false;
