@@ -324,6 +324,8 @@ static char s_latest_path[BOOK_STORE_PATH_MAX];
 static char s_editor_title[121], s_editor_notice[96];
 static ui_text_edit_t s_editor_input;
 static uint8_t* s_editor_cover;
+static bool s_edit_is_note; // EDIT 视图复用于编辑划线笔记 / EDIT view reused to edit a highlight note
+static int s_note_index = -1;
 static bool s_save_failed;
 static bool s_pending_invalidated;
 static int64_t s_save_retry_ms;
@@ -1724,6 +1726,18 @@ static void draw_manage(uint8_t* fb) {
 }
 
 static void draw_editor(uint8_t* fb) {
+    if (s_edit_is_note) {
+        ui_clear_page(fb); ui_nav_status(fb);
+        ui_nav_back(fb, 36, 79);
+        ui_text_vc(fb, 342, 107, 31, "笔记", EPD_DRAW_ALIGN_CENTER, false);
+        ui_text_vc(fb, 646, 107, 26, "完成", EPD_DRAW_ALIGN_RIGHT, false);
+        ui_hairline(fb, 133, 36, 612, UI_GRAY_LIGHT);
+        ui_text(fb, 36, 378, 24, "笔记（可留空清除）", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text_input_draw(fb, &s_editor_input, (EpdRect){36, 424, 612, 83}, 31, false, NULL);
+        if (s_editor_notice[0]) ui_text_fixed_vc(fb, 36, 530, 22, s_editor_notice, EPD_DRAW_ALIGN_LEFT, false);
+        ui_keyboard_draw(fb, 560);
+        return;
+    }
     ui_clear_page(fb);
     ui_nav_status(fb);
     ui_nav_back(fb, 36, 79);
@@ -3471,14 +3485,12 @@ static void draw_reader_highlights(uint8_t* fb) {
         if (tg) ui_text_box(fb, (EpdRect){item.x + item.width - 92, item.y + 5, 74, item.height / 2 - 8}, 18, hl_tags[tg < 4 ? tg : 0], EPD_DRAW_ALIGN_RIGHT, false);
     }
     if (s_highlight_sel >= 0) {
-        int bw = wide ? 200 : 196, gap = 10, total = 3 * bw + 2 * gap, x0 = wide ? (w - total) / 2 : 36;
-        EpdRect go = {x0, top + 520, bw, 64};
-        EpdRect tagr = {x0 + bw + gap, top + 520, bw, 64};
-        EpdRect del = {x0 + 2 * (bw + gap), top + 520, bw, 64};
+        int bw = wide ? 148 : 146, gap = 8, total = 4 * bw + 3 * gap, x0 = wide ? (w - total) / 2 : 36;
         char tl[24]; snprintf(tl, sizeof(tl), "标签·%s", hl_tags[book_highlight_tag(s_highlight_sel) & 3]);
-        ui_draw_button(fb, go, "跳转", false);
-        ui_draw_button(fb, tagr, tl, false);
-        ui_draw_button(fb, del, "删除", true);
+        ui_draw_button(fb, (EpdRect){x0, top + 520, bw, 64}, "跳转", false);
+        ui_draw_button(fb, (EpdRect){x0 + (bw + gap), top + 520, bw, 64}, "笔记", false);
+        ui_draw_button(fb, (EpdRect){x0 + 2 * (bw + gap), top + 520, bw, 64}, tl, false);
+        ui_draw_button(fb, (EpdRect){x0 + 3 * (bw + gap), top + 520, bw, 64}, "删除", true);
     }
     char page[48]; snprintf(page, sizeof(page), "‹   %d / %d   ›", s_highlight_page + 1, pages);
     reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 606, 22, page, EPD_DRAW_ALIGN_CENTER, false);
@@ -6695,7 +6707,7 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 export_highlights();
             }
         } else if (s_highlight_sel >= 0 && y >= top + 520 && y < top + 584) {
-            int bw = wide ? 200 : 196, gap = 10, total = 3 * bw + 2 * gap, x0 = wide ? (w - total) / 2 : 36;
+            int bw = wide ? 148 : 146, gap = 8, total = 4 * bw + 3 * gap, x0 = wide ? (w - total) / 2 : 36;
             if (ui_rect_hit((EpdRect){x0, top + 520, bw, 64}, x, y)) {
                 // 跳转到该划线（章 + 页首字节偏移，与书签同锚点）。/ Jump to the range (chapter + page-start offset, same anchors as bookmarks).
                 uint16_t ch = 0; uint32_t st = 0, en = 0; const char* ex = "";
@@ -6704,7 +6716,19 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                     s_reader_panel = READER_PANEL_NONE;
                     save_progress();
                 }
-            } else if (ui_rect_hit((EpdRect){x0 + bw + gap, top + 520, bw, 64}, x, y)) {
+            } else if (ui_rect_hit((EpdRect){x0 + (bw + gap), top + 520, bw, 64}, x, y)) {
+                // 编辑该划线笔记：复用 EDIT 视图的键盘。/ Edit this highlight's note, reusing the EDIT view keyboard.
+                s_note_index = s_highlight_sel;
+                const char* n = book_highlight_note(s_highlight_sel);
+                copy_text(s_editor_title, sizeof(s_editor_title), n ? n : "");
+                s_editor_notice[0] = 0;
+                s_edit_is_note = true;
+                ui_text_edit_init(&s_editor_input, s_editor_title, sizeof(s_editor_title));
+                ui_keyboard_begin(&s_editor_input, false);
+                s_reader_panel = READER_PANEL_NONE;
+                s_view = EDIT;
+                return APP_REDRAW_PAGE;
+            } else if (ui_rect_hit((EpdRect){x0 + 2 * (bw + gap), top + 520, bw, 64}, x, y)) {
                 // 循环标签：无→重要→待读→疑问→无。/ Cycle tag: none → important → to-read → question → none.
                 uint8_t t = (uint8_t)((book_highlight_tag(s_highlight_sel) + 1) % 4);
                 if (book_highlight_set_tag(s_highlight_sel, t)) {
@@ -7067,6 +7091,16 @@ static app_redraw_t manage_action(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     return APP_REDRAW_PAGE;
 }
 static app_redraw_t editor_save(app_ctx_t* ctx) {
+    if (s_edit_is_note) {
+        if (ui_keyboard_pending()) { copy_text(s_editor_notice, sizeof(s_editor_notice), "请先选择候选字"); return APP_REDRAW_PAGE; }
+        if (s_note_index >= 0) (void)book_highlight_set_note(s_note_index, s_editor_title);
+        ui_keyboard_end();
+        s_edit_is_note = false; s_note_index = -1;
+        s_view = READING;
+        copy_text(s_reader_notice, sizeof(s_reader_notice), "笔记已保存");
+        s_reader_notice_until = esp_timer_get_time() / 1000 + 1600;
+        return APP_REDRAW_PAGE;
+    }
     if (ui_keyboard_pending()) {
         copy_text(s_editor_notice, sizeof(s_editor_notice), "请先选择候选字");
         return APP_REDRAW_PAGE;
@@ -7103,7 +7137,10 @@ static app_redraw_t editor_paint(app_ctx_t* ctx, bool field) {
 }
 static app_redraw_t editor_action(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (y < 134) {
-        if (x < 160) { ui_keyboard_end(); free(s_editor_cover); s_editor_cover = NULL; s_view = SHELF; return APP_REDRAW_PAGE; }
+        if (x < 160) {
+            if (s_edit_is_note) { ui_keyboard_end(); s_edit_is_note = false; s_note_index = -1; s_view = READING; return APP_REDRAW_PAGE; }
+            ui_keyboard_end(); free(s_editor_cover); s_editor_cover = NULL; s_view = SHELF; return APP_REDRAW_PAGE;
+        }
         if (x > 510) return editor_save(ctx);
         return APP_REDRAW_NONE;
     }
@@ -8348,6 +8385,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
         return APP_REDRAW_PAGE;
     }
     if (s_view != READING && s_view != TOC) {
+        if (s_view == EDIT && s_edit_is_note) { ui_keyboard_end(); s_edit_is_note = false; s_note_index = -1; s_view = READING; return APP_REDRAW_PAGE; }
         if (key == UI_KEY_2) { ui_nav_request(ctx, 0); return APP_REDRAW_NONE; }
         if (s_view == EDIT) { ui_keyboard_end(); free(s_editor_cover); s_editor_cover = NULL; s_view = MANAGE; return APP_REDRAW_PAGE; }
         if (s_view == SEARCH) { search_finish(ctx, false); return APP_REDRAW_PAGE; }
