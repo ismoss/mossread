@@ -41,6 +41,7 @@
 #include "ui_kit.h"
 #include "ui_text_input.h"
 #include "ui_keyboard.h"
+#include "file_search.h"
 #include "e0470_epaper_waveform.h"
 #include "esp_timer.h"
 #include "ui_nav.h"
@@ -81,7 +82,7 @@ static bool s_sd_format_confirm;
 // 格式化尝试的反馈，显示在卡片的信息行上；为空时回到提示语。
 // Feedback from a format attempt, shown on the card's info line; empty falls back to the hint.
 static char s_sd_notice[64];
-typedef enum { FILE_VIEW_LIST, FILE_VIEW_ACTIONS, FILE_VIEW_RENAME, FILE_VIEW_MOVE } file_view_t;
+typedef enum { FILE_VIEW_LIST, FILE_VIEW_ACTIONS, FILE_VIEW_RENAME, FILE_VIEW_MOVE, FILE_VIEW_SEARCH } file_view_t;
 static file_view_t s_view;
 // 文件列表排序：文件夹恒在前，组内按所选键升降序（rc103 文件管理套件·排序）。点表头摘要循环切换。
 // File list sort: folders always first; within a group sort by the chosen key asc/desc. Tap the header
@@ -94,6 +95,18 @@ static int s_move_origin_folder, s_move_origin_page;
 static char s_move_origin_dir[288];
 static char s_editor[121], s_editor_ext[16], s_editor_notice[96];
 static ui_text_edit_t s_editor_input;
+// 递归搜索状态：查询串、键盘输入、增量遍历句柄与节流。/ Recursive search: query, keyboard input, incremental walker.
+static char s_query[65];
+static ui_text_edit_t s_query_input;
+static file_search_t *s_fs;
+static unsigned s_fs_matches;
+static int64_t s_search_paint_ms;
+static void search_close(void);
+static void search_clear(void);
+static void search_begin(void);
+static void render_search(uint8_t *fb);
+static app_redraw_t search_paint(app_ctx_t *ctx, bool field);
+static app_redraw_t search_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev);
 static void scan_folder(int folder);
 static bool main_page_visible(app_ctx_t *ctx);
 static bool s_render_secondary;
@@ -629,15 +642,25 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         files_navigation(fb);
         return;
     }
+    if (s_view == FILE_VIEW_SEARCH) {
+        render_search(fb);
+        files_navigation(fb);
+        return;
+    }
     if (s_folder >= 0) {
         ui_nav_back(fb, 36, 79);
         ui_text_vc(fb, 342, 107, 34, s_view == FILE_VIEW_MOVE ? "选择目标文件夹" : names[s_folder], EPD_DRAW_ALIGN_CENTER, false);
+        // 搜索入口（仅普通文件夹列表，非移动目标选择）。/ Search entry (folder list only, not move-target).
+        if (s_view == FILE_VIEW_LIST) ui_text_vc(fb, 646, 107, 24, "搜索", EPD_DRAW_ALIGN_RIGHT, false);
         char path[144];
-        snprintf(path, sizeof(path), "TF卡%s", folder_root(s_folder) + 7);
+        if (s_query[0]) snprintf(path, sizeof(path), "搜索：%s（点按清除）", s_query);
+        else snprintf(path, sizeof(path), "TF卡%s", folder_root(s_folder) + 7);
         ui_text(fb, 36, 172, 20, path, EPD_DRAW_ALIGN_LEFT, false);
         int folders = 0, files = 0;
         for (int i = 0; i < s_count; ++i) s_files[i].is_dir ? ++folders : ++files;
-        char summary[64]; snprintf(summary, sizeof(summary), "%d夹·%d文件·%s", folders, files, files_sort_label());
+        char summary[64];
+        if (s_query[0]) snprintf(summary, sizeof(summary), "%d 项", s_count);
+        else snprintf(summary, sizeof(summary), "%d夹·%d文件·%s", folders, files, files_sort_label());
         ui_text(fb, 648, 172, 20, summary, EPD_DRAW_ALIGN_RIGHT, false);
         file_rule(fb, 36, 202, 612);
         if (s_message[0] && s_folder != 3) ui_text(fb, 36, 238, 27, s_message, EPD_DRAW_ALIGN_LEFT, false);
@@ -757,6 +780,7 @@ static void on_enter(app_ctx_t *ctx) {
     s_folder = s_requested_folder; s_requested_folder = -1;
     s_view = FILE_VIEW_LIST;
     s_delete_confirm = false;
+    search_close(); s_query[0] = 0;
     snprintf(s_dir, sizeof(s_dir), "/sdcard");
     s_page = 0; s_scan_pending = true;
     read_pico_sd_start_probe();
@@ -773,7 +797,7 @@ static void on_enter(app_ctx_t *ctx) {
 }
 static void on_media_lost(app_ctx_t *ctx) {
     s_pager_pressed=UI_PAGER_NONE;s_pager_paint_pending=false;
-    (void)ctx; ui_keyboard_end(); s_folder = -1; s_count = 0; s_scan_pending = false;
+    (void)ctx; ui_keyboard_end(); search_close(); s_query[0] = 0; s_folder = -1; s_count = 0; s_scan_pending = false;
     s_view = FILE_VIEW_LIST; s_delete_confirm = false;
     memset(s_counts, 0, sizeof(s_counts)); read_pico_sd_get_info(&s_sd);
 }
@@ -790,6 +814,22 @@ static app_redraw_t on_tick(app_ctx_t *ctx) {
             ctx->touch ? ctx->touch->y : 0, ctx->now_ms) == UI_KEYBOARD_CHANGED) return rename_paint(ctx, false);
         return ui_keyboard_idle_tick(ctx->touch && ctx->touch->touched, ctx->now_ms) == UI_KEYBOARD_CHANGED
             ? rename_paint(ctx, false) : APP_REDRAW_NONE;
+    }
+    if (s_view == FILE_VIEW_SEARCH) {
+        if (ctx->consumed) return APP_REDRAW_NONE;
+        bool held = !ctx->released && ctx->touch && ctx->touch->touched && ctx->touch->count == 1;
+        if (ui_keyboard_hold_tick(held, ctx->touch ? ctx->touch->x : 0,
+            ctx->touch ? ctx->touch->y : 0, ctx->now_ms) == UI_KEYBOARD_CHANGED) return search_paint(ctx, false);
+        return ui_keyboard_idle_tick(ctx->touch && ctx->touch->touched, ctx->now_ms) == UI_KEYBOARD_CHANGED
+            ? search_paint(ctx, false) : APP_REDRAW_NONE;
+    }
+    // 增量递归搜索：每次有界步进，最多每 500ms 重绘一次。/ Incremental recursive search: bounded steps, repaint at most every 500ms.
+    if (s_fs && s_view == FILE_VIEW_LIST && !(ctx->touch && ctx->touch->touched)) {
+        file_search_step(s_fs, 24);
+        file_search_stats_t st = file_search_stats(s_fs);
+        s_fs_matches = st.matched;
+        if (st.done) { file_search_close(s_fs); s_fs = NULL; qsort(s_files, s_count, sizeof(s_files[0]), compare_files); }
+        if (st.done || ctx->now_ms - s_search_paint_ms >= 500) { s_search_paint_ms = ctx->now_ms; return APP_REDRAW_PAGE; }
     }
     if (!s_scan_pending) {
         if (s_folder<0 && s_sd.mounted && !(ctx->touch && ctx->touch->touched) && ctx->now_ms-s_space_poll_ms>=
@@ -938,7 +978,7 @@ static bool files_present(app_ctx_t *ctx, app_redraw_t redraw) {
         guard_draw_result(ctx->hl,update_display_area_diff_with(ctx->hl,&E0470_FOLLOW_WAVEFORM,MODE_DU,ui_pager_area_at(file_pager_top())));
         return true;
     }
-    if (redraw != APP_REDRAW_AREA || s_view != FILE_VIEW_RENAME) return false;
+    if (redraw != APP_REDRAW_AREA || (s_view != FILE_VIEW_RENAME && s_view != FILE_VIEW_SEARCH)) return false;
     if (s_input_settle) {
         guard_draw_result(ctx->hl, update_display_area_full_with(ctx->hl, &E0470_WAVEFORM, MODE_GL16, s_input_area));
         s_input_settle = false;
@@ -968,11 +1008,78 @@ static app_redraw_t rename_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev)
     return result == UI_KEYBOARD_CHANGED ? rename_paint(ctx, false) : APP_REDRAW_NONE;
 }
 
+/* ---- 递归搜索 / Recursive search ---- */
+// 搜索入口按钮（文件页标题行右侧）。/ Search entry button (folder title row, right side).
+static EpdRect files_search_entry_rect(void) { return (EpdRect){556, 86, 92, 44}; }
+static void search_close(void) { if (s_fs) { file_search_close(s_fs); s_fs = NULL; } }
+static void search_found_cb(const char *path, const struct stat *info, void *ctx) {
+    (void)ctx;
+    if (!info || !S_ISREG(info->st_mode) || s_count >= FILE_MAX) return;
+    const char *name = strrchr(path, '/'); name = name ? name + 1 : path;
+    if (s_folder >= 0 && s_folder != 3 && !supported(s_folder, name)) return;
+    file_item_t *item = &s_files[s_count];
+    if (strlen(path) >= sizeof(item->path)) return;
+    copy_utf8(item->path, sizeof(item->path), path);
+    copy_utf8(item->name, sizeof(item->name), name);
+    item->size = info->st_size; item->mtime = (int64_t)info->st_mtime; item->is_dir = false;
+    ++s_count;
+}
+static void search_clear(void) { search_close(); s_query[0] = 0; scan_folder(s_folder >= 0 ? s_folder : 3); }
+static void search_begin(void) {
+    s_query[0] = 0; ui_text_edit_init(&s_query_input, s_query, sizeof(s_query));
+    ui_keyboard_begin(&s_query_input, false); s_view = FILE_VIEW_SEARCH;
+}
+static void render_search(uint8_t *fb) {
+    ui_nav_back(fb, 36, 79);
+    ui_text_vc(fb, 342, 107, 34, "搜索", EPD_DRAW_ALIGN_CENTER, false);
+    ui_text_vc(fb, 646, 107, 25, "搜索", EPD_DRAW_ALIGN_RIGHT, false);
+    file_rule(fb, 36, 157, 612);
+    ui_text(fb, 36, 202, 22, "文件名 / 拼音 / 首字母", EPD_DRAW_ALIGN_LEFT, false);
+    EpdRect field = {36, 242, 612, 82};
+    ui_text_input_draw(fb, &s_query_input, field, 29, false, "");
+    ui_keyboard_draw(fb, UI_SYSTEM_KEYBOARD_TOP);
+}
+static app_redraw_t search_paint(app_ctx_t *ctx, bool field) {
+    ui_keyboard_update_t u = ui_keyboard_update(ctx->fb, UI_SYSTEM_KEYBOARD_TOP, (EpdRect){36, 242, 612, 82}, 29, false, "", field);
+    s_input_area = u.area; s_input_layout = u.layout; s_input_settle = u.settle;
+    return u.area.width ? APP_REDRAW_AREA : APP_REDRAW_NONE;
+}
+static app_redraw_t search_apply(void) {
+    ui_keyboard_end();
+    s_view = FILE_VIEW_LIST;
+    search_close();
+    if (!s_query[0]) { scan_folder(s_folder >= 0 ? s_folder : 3); return APP_REDRAW_PAGE; }
+    if (!files_alloc()) return APP_REDRAW_NONE;
+    s_count = s_page = 0; s_message[0] = 0; s_fs_matches = 0;
+    int folder = s_folder >= 0 ? s_folder : 3;
+    s_fs = file_search_begin(folder_root(folder), s_query, search_found_cb, NULL);
+    if (!s_fs) { snprintf(s_message, sizeof(s_message), "无法搜索当前目录"); scan_folder(folder); s_query[0] = 0; }
+    return APP_REDRAW_PAGE;
+}
+static app_redraw_t search_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
+    if (ev->type == UI_GESTURE_PRESS)
+        return ui_keyboard_press(ev->x0, ev->y0, UI_SYSTEM_KEYBOARD_TOP, ctx->now_ms) ? search_paint(ctx, false) : APP_REDRAW_NONE;
+    bool feedback = ev->type != UI_GESTURE_LONG_PRESS && ui_keyboard_release();
+    if (ev->type == UI_GESTURE_SWIPE_L || ev->type == UI_GESTURE_SWIPE_R) {
+        bool page = ui_keyboard_page(ev->type == UI_GESTURE_SWIPE_L ? 1 : -1);
+        return (page || feedback) ? search_paint(ctx, false) : APP_REDRAW_NONE;
+    }
+    if (ev->type != UI_GESTURE_TAP) return feedback ? search_paint(ctx, false) : APP_REDRAW_NONE;
+    int x = ev->x0, y = ev->y0;
+    if (y < 160 && x < 160) { ui_keyboard_end(); s_view = FILE_VIEW_LIST; return APP_REDRAW_PAGE; }
+    if (y < 160 && x > 510) return search_apply();
+    if (ui_text_input_tap(&s_query_input, (EpdRect){36, 242, 612, 82}, 29, false, "", x, y)) return search_paint(ctx, true);
+    ui_keyboard_result_t result = ui_keyboard_tap(x, y, UI_SYSTEM_KEYBOARD_TOP, esp_timer_get_time() / 1000);
+    if (result == UI_KEYBOARD_DONE) return search_apply();
+    return result == UI_KEYBOARD_CHANGED ? search_paint(ctx, false) : APP_REDRAW_NONE;
+}
+
 static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
     app_redraw_t pager;
     if(file_pager_event(ctx,ev,&pager))return pager;
     if (s_view == FILE_VIEW_ACTIONS) return action_gesture(ctx, ev);
     if (s_view == FILE_VIEW_RENAME) return rename_gesture(ctx, ev);
+    if (s_view == FILE_VIEW_SEARCH) return search_gesture(ctx, ev);
     if (s_view == FILE_VIEW_MOVE) {
         if (ev->type == UI_GESTURE_SWIPE_L && (s_page + 1) * visible_rows() < s_count) {
             ++s_page; return APP_REDRAW_PAGE;
@@ -1033,8 +1140,12 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
             s_counts[0]=count_root(0);s_counts[2]=count_root(2);
             return APP_REDRAW_PAGE;
         }
+        // 搜索中：点表头整行清除搜索。/ While searching: tap the header line to clear.
+        if (!long_press && s_query[0] && ev->y0 >= 154 && ev->y0 < 196) { search_clear(); return APP_REDRAW_PAGE; }
+        // 搜索入口（仅普通文件夹列表）。/ Search entry (folder list only).
+        if (!long_press && !s_query[0] && s_view == FILE_VIEW_LIST && ui_rect_hit(files_search_entry_rect(), ev->x0, ev->y0)) { search_begin(); return APP_REDRAW_FULL; }
         // 点表头摘要切换排序。/ Tap the header summary to cycle the sort order.
-        if (!long_press && ui_rect_hit(files_sort_rect(), ev->x0, ev->y0)) {
+        if (!long_press && !s_query[0] && ui_rect_hit(files_sort_rect(), ev->x0, ev->y0)) {
             s_sort = (file_sort_t)((s_sort + 1) % SORT_COUNT);
             qsort(s_files, s_count, sizeof(s_files[0]), compare_files);
             s_page = 0;
@@ -1126,6 +1237,7 @@ static app_redraw_t on_key(app_ctx_t *ctx, int key) {
     if (s_view == FILE_VIEW_MOVE) { leave_move(false); return APP_REDRAW_PAGE; }
     if (key == 1) { ui_nav_request(ctx, 0); return APP_REDRAW_NONE; }
     if (s_view == FILE_VIEW_RENAME) { ui_keyboard_end(); s_view = FILE_VIEW_ACTIONS; return APP_REDRAW_PAGE; }
+    if (s_view == FILE_VIEW_SEARCH) { ui_keyboard_end(); s_view = FILE_VIEW_LIST; return APP_REDRAW_PAGE; }
     if (s_view == FILE_VIEW_ACTIONS) {
         s_view = FILE_VIEW_LIST; s_delete_confirm = false; rescan_current(); return APP_REDRAW_PAGE;
     }
@@ -1150,7 +1262,7 @@ static bool files_back_swipe_area(app_ctx_t *ctx,const ui_gesture_event_t *event
     return s_view!=FILE_VIEW_RENAME || event->y0<UI_SYSTEM_KEYBOARD_TOP;
 }
 static void files_before_lock(app_ctx_t *ctx) { (void)ctx;s_pager_pressed=UI_PAGER_NONE;s_pager_paint_pending=false; }
-static void files_exit(app_ctx_t *ctx) { files_before_lock(ctx); ui_keyboard_end(); }
+static void files_exit(app_ctx_t *ctx) { files_before_lock(ctx); ui_keyboard_end(); search_close(); s_query[0] = 0; }
 
 const app_desc_t app_files = {
     .binary_ui = false,
