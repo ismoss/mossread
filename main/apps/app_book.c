@@ -3395,6 +3395,33 @@ static void draw_reader_stats_recent(uint8_t* fb) {
 }
 
 /* ---- 划线面板 / Highlights panel ---- */
+// 把当前书的划线（含标签/笔记）导出为 books 目录下的 txt，可在书架当书打开查看。
+// Export the current book's highlights (with tag/note) to a txt under the books dir, openable as a book.
+static void export_highlights(void) {
+    int n = book_highlight_count();
+    char path[288];
+    if (snprintf(path, sizeof(path), "%s/highlights.txt", app_settings_books_dir()) >= (int)sizeof(path)) {
+        copy_text(s_reader_notice, sizeof(s_reader_notice), "路径过长"); s_reader_notice_until = esp_timer_get_time() / 1000 + 1800; return;
+    }
+    FILE* f = fopen(path, "w");
+    if (!f) { copy_text(s_reader_notice, sizeof(s_reader_notice), "导出失败"); s_reader_notice_until = esp_timer_get_time() / 1000 + 2200; return; }
+    fprintf(f, "%s\n\n", s_book_title[0] ? s_book_title : s_path);
+    for (int i = 0; i < n; ++i) {
+        uint16_t ch = 0; uint32_t st = 0, en = 0; const char* ex = "";
+        book_highlight_at(i, &ch, &st, &en, &ex);
+        char title[96];
+        if (book_chapter_title(ch, title, sizeof(title)) != ESP_OK) snprintf(title, sizeof(title), "第%u章", (unsigned)ch + 1);
+        uint8_t tg = book_highlight_tag(i);
+        const char* note = book_highlight_note(i);
+        fprintf(f, "- [%s] %s", title, ex && ex[0] ? ex : "（无摘录）");
+        if (tg) fprintf(f, "  #%s", hl_tags[tg & 3]);
+        if (note && note[0]) fprintf(f, "  // %s", note);
+        fprintf(f, "\n");
+    }
+    fclose(f);
+    snprintf(s_reader_notice, sizeof(s_reader_notice), "已导出 %d 条到 books/highlights.txt", n);
+    s_reader_notice_until = esp_timer_get_time() / 1000 + 2200;
+}
 static int highlight_rows(void) { return (s_highlight_sel >= 0 ? 424 : 492) / bookmark_row_step(); }
 static void draw_reader_highlights(uint8_t* fb) {
     const int top = bookmarks_top(), w = reader_w();
@@ -3413,6 +3440,10 @@ static void draw_reader_highlights(uint8_t* fb) {
     ui_fill_round_rect(fb, addline, 20, 0xe8);
     ui_draw_control_frame(fb, addline, 20, 0x78);
     reader_panel_text_vc(fb, addline.x + addline.width / 2, top + 57, 20, "记本行", EPD_DRAW_ALIGN_CENTER, false);
+    EpdRect exp = {wide ? w - 420 : 250, top + 30, 122, 54};
+    ui_fill_round_rect(fb, exp, 20, 0xe8);
+    ui_draw_control_frame(fb, exp, 20, 0x78);
+    reader_panel_text_vc(fb, exp.x + exp.width / 2, top + 57, 20, "导出", EPD_DRAW_ALIGN_CENTER, false);
     if (!count) {
         reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 250, 26, "还没有划线", EPD_DRAW_ALIGN_CENTER, false);
         reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 300, 18, "点右上「记本页」把当前页记一条划线", EPD_DRAW_ALIGN_CENTER, false);
@@ -6660,6 +6691,8 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 s_pick_line = true; s_reader_panel = READER_PANEL_NONE;
                 copy_text(s_reader_notice, sizeof(s_reader_notice), "点正文选择一行");
                 s_reader_notice_until = esp_timer_get_time() / 1000 + 2500;
+            } else if (x >= (wide ? w - 420 : 250)) {
+                export_highlights();
             }
         } else if (s_highlight_sel >= 0 && y >= top + 520 && y < top + 584) {
             int bw = wide ? 200 : 196, gap = 10, total = 3 * bw + 2 * gap, x0 = wide ? (w - total) / 2 : 36;
