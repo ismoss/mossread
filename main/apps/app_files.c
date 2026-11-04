@@ -51,7 +51,7 @@
 
 #define FILE_MAX 96
 #define FILE_ROWS 9
-typedef struct { char path[288]; char name[128]; off_t size; int64_t mtime; bool is_dir; } file_item_t;
+typedef struct { char path[288]; char name[128]; off_t size; int64_t mtime; bool is_dir; bool selected; } file_item_t;
 // 文件列表放 PSRAM：内部 RAM 已被静态占用到约 90%，而 BLE 控制器只能用内部 RAM，
 // 列表这类大数组没必要跟它抢。
 // The file list lives in PSRAM. Internal RAM is already around 90% statically used and the BLE
@@ -90,6 +90,11 @@ static file_view_t s_view;
 typedef enum { SORT_NAME_ASC, SORT_NAME_DESC, SORT_TIME_DESC, SORT_TIME_ASC, SORT_SIZE_DESC, SORT_SIZE_ASC, SORT_COUNT } file_sort_t;
 static file_sort_t s_sort = SORT_NAME_ASC;
 static bool s_file_grid;   // 列表/网格视图切换（rc103 套件）。/ List vs grid view.
+static bool s_select_mode; // 跨页多选模式（rc103 套件）。/ Cross-page multi-select mode.
+static bool s_batch_confirm;
+static int selected_count(void);
+static void clear_selection(void);
+static void batch_delete_selected(void);
 static file_item_t s_selected;
 static bool s_delete_confirm;
 static int s_move_origin_folder, s_move_origin_page;
@@ -453,7 +458,10 @@ static int compare_files(const void *left, const void *right) {
 // 排序切换按钮：文件页表头右侧摘要行（y≈172，行区从 214 起，不冲突）。
 // Sort toggle: the header summary line (y≈172); list rows start at 214, so no overlap.
 static EpdRect files_sort_rect(void) { return (EpdRect){360, 156, 288, 36}; }
-static EpdRect files_grid_rect(void) { return (EpdRect){468, 86, 84, 44}; }
+static EpdRect files_grid_rect(void) { return (EpdRect){546, 86, 50, 44}; }
+static EpdRect files_multi_rect(void) { return (EpdRect){496, 86, 50, 44}; }
+static EpdRect files_selectall_rect(void) { return (EpdRect){546, 86, 50, 44}; }
+static EpdRect files_batchdel_rect(void) { return (EpdRect){598, 86, 50, 44}; }
 
 static void scan_folder(int folder) {
     if (!files_alloc()) return;
@@ -668,8 +676,18 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         ui_nav_back(fb, 36, 79);
         ui_text_vc(fb, 342, 107, 34, s_view == FILE_VIEW_MOVE ? "选择目标文件夹" : names[s_folder], EPD_DRAW_ALIGN_CENTER, false);
         // 搜索入口（仅普通文件夹列表，非移动目标选择）。/ Search entry (folder list only, not move-target).
-        if (s_view == FILE_VIEW_LIST) ui_text_vc(fb, 646, 107, 24, "搜索", EPD_DRAW_ALIGN_RIGHT, false);
-        if (s_view == FILE_VIEW_LIST && !s_query[0]) ui_text(fb, 472, 95, 22, s_file_grid ? "列表" : "网格", EPD_DRAW_ALIGN_LEFT, false);
+        if (s_view == FILE_VIEW_LIST && !s_query[0]) {
+            if (s_select_mode) {
+                ui_text(fb, 500, 95, 22, "取消", EPD_DRAW_ALIGN_LEFT, false);
+                ui_text(fb, 550, 95, 22, "全选", EPD_DRAW_ALIGN_LEFT, false);
+                char del[20]; snprintf(del, sizeof(del), "删%u", (unsigned)selected_count());
+                ui_text_vc(fb, 646, 107, 22, del, EPD_DRAW_ALIGN_RIGHT, false);
+            } else {
+                ui_text(fb, 500, 95, 22, "多选", EPD_DRAW_ALIGN_LEFT, false);
+                ui_text(fb, 550, 95, 22, s_file_grid ? "列表" : "网格", EPD_DRAW_ALIGN_LEFT, false);
+                ui_text_vc(fb, 646, 107, 24, "搜索", EPD_DRAW_ALIGN_RIGHT, false);
+            }
+        }
         char path[144];
         if (s_query[0]) snprintf(path, sizeof(path), "搜索：%s（点按清除）", s_query);
         else snprintf(path, sizeof(path), "TF卡%s", folder_root(s_folder) + 7);
@@ -694,6 +712,7 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
                 file_icon(fb, r.x + r.width / 2 - 23, r.y + 24, s_files[index].is_dir);
                 ui_text_vc(fb, r.x + r.width / 2, r.y + 112, 21, name, EPD_DRAW_ALIGN_CENTER, false);
                 ui_text_vc(fb, r.x + r.width / 2, r.y + 152, 17, detail, EPD_DRAW_ALIGN_CENTER, false);
+                if (s_select_mode) { EpdRect cb = {r.x + r.width - 30, r.y + 8, 24, 24}; if (s_files[index].selected) ui_fill_round_rect(fb, cb, 6, UI_GRAY_BLACK); else ui_draw_control_frame(fb, cb, 6, UI_GRAY_BLACK); }
             } else {
                 int y = 214 + row * 88;
                 while (*name && ttf_text_width_px(ui_text_effective_px(23), name) > 450) {
@@ -707,7 +726,8 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
                 const char *tag = !strcmp(s_files[index].path, app_settings_books_dir()) ? "书籍目录" :
                                   !strcmp(s_files[index].path, app_settings_fonts_dir()) ? "字体目录" : NULL;
                 if (tag) ui_text(fb, 588, y + 35, 18, tag, EPD_DRAW_ALIGN_RIGHT, false);
-                ui_text(fb, 640, y + 30, 22, "›", EPD_DRAW_ALIGN_RIGHT, false);
+                if (s_select_mode) { EpdRect cb = {610, y + 28, 26, 26}; if (s_files[index].selected) ui_fill_round_rect(fb, cb, 6, UI_GRAY_BLACK); else ui_draw_control_frame(fb, cb, 6, UI_GRAY_BLACK); }
+                else ui_text(fb, 640, y + 30, 22, "›", EPD_DRAW_ALIGN_RIGHT, false);
                 file_rule(fb, 101, y + 82, 547);
             }
         }
@@ -813,7 +833,7 @@ static void on_enter(app_ctx_t *ctx) {
     s_folder = s_requested_folder; s_requested_folder = -1;
     s_view = FILE_VIEW_LIST;
     s_delete_confirm = false;
-    search_close(); s_query[0] = 0;
+    search_close(); s_query[0] = 0; s_select_mode = false; s_batch_confirm = false;
     snprintf(s_dir, sizeof(s_dir), "/sdcard");
     s_page = 0; s_scan_pending = true;
     read_pico_sd_start_probe();
@@ -830,7 +850,7 @@ static void on_enter(app_ctx_t *ctx) {
 }
 static void on_media_lost(app_ctx_t *ctx) {
     s_pager_pressed=UI_PAGER_NONE;s_pager_paint_pending=false;
-    (void)ctx; ui_keyboard_end(); search_close(); s_query[0] = 0; s_folder = -1; s_count = 0; s_scan_pending = false;
+    (void)ctx; ui_keyboard_end(); search_close(); s_query[0] = 0; s_select_mode = false; s_batch_confirm = false; s_folder = -1; s_count = 0; s_scan_pending = false;
     s_view = FILE_VIEW_LIST; s_delete_confirm = false;
     memset(s_counts, 0, sizeof(s_counts)); read_pico_sd_get_info(&s_sd);
 }
@@ -928,6 +948,19 @@ static void delete_selected(void) {
     s_view = FILE_VIEW_LIST; s_delete_confirm = false;
     rescan_current();
     snprintf(s_message, sizeof(s_message), s_selected.is_dir ? "文件夹已删除" : "文件已删除");
+}
+static int selected_count(void) { int n = 0; for (int i = 0; i < s_count; ++i) if (s_files[i].selected) ++n; return n; }
+static void clear_selection(void) { for (int i = 0; i < s_count; ++i) s_files[i].selected = false; }
+static void batch_delete_selected(void) {
+    unsigned done = 0; bool failed = false;
+    for (int i = 0; i < s_count; ++i) {
+        if (!s_files[i].selected) continue;
+        char p[288]; copy_utf8(p, sizeof(p), s_files[i].path);
+        if (file_tree_delete(p, file_deleted, NULL) == ESP_OK) ++done; else failed = true;
+    }
+    repair_deleted_directories(); book_store_notify_changed();
+    s_select_mode = false; s_batch_confirm = false; rescan_current();
+    snprintf(s_message, sizeof(s_message), failed ? "部分删除失败，已删 %u 项" : "已删除 %u 项", done);
 }
 
 static app_redraw_t save_rename(void) {
@@ -1051,7 +1084,7 @@ static app_redraw_t rename_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev)
 
 /* ---- 递归搜索 / Recursive search ---- */
 // 搜索入口按钮（文件页标题行右侧）。/ Search entry button (folder title row, right side).
-static EpdRect files_search_entry_rect(void) { return (EpdRect){556, 86, 92, 44}; }
+static EpdRect files_search_entry_rect(void) { return (EpdRect){598, 86, 50, 44}; }
 static void search_close(void) { if (s_fs) { file_search_close(s_fs); s_fs = NULL; } }
 static void search_found_cb(const char *path, const struct stat *info, void *ctx) {
     (void)ctx;
@@ -1199,19 +1232,25 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         // 搜索中：点表头整行清除搜索。/ While searching: tap the header line to clear.
         if (!long_press && s_query[0] && ev->y0 >= 154 && ev->y0 < 196) { search_clear(); return APP_REDRAW_PAGE; }
         // 搜索入口（仅普通文件夹列表）。/ Search entry (folder list only).
-        if (!long_press && !s_query[0] && s_view == FILE_VIEW_LIST && ui_rect_hit(files_search_entry_rect(), ev->x0, ev->y0)) { search_begin(); return APP_REDRAW_FULL; }
-        // 列表↔网格切换。/ Toggle list vs grid.
-        if (!long_press && !s_query[0] && s_view == FILE_VIEW_LIST && ui_rect_hit(files_grid_rect(), ev->x0, ev->y0)) { s_file_grid = !s_file_grid; s_page = 0; return APP_REDRAW_PAGE; }
-        // 点表头摘要切换排序。/ Tap the header summary to cycle the sort order.
-        if (!long_press && !s_query[0] && ui_rect_hit(files_sort_rect(), ev->x0, ev->y0)) {
-            s_sort = (file_sort_t)((s_sort + 1) % SORT_COUNT);
-            qsort(s_files, s_count, sizeof(s_files[0]), compare_files);
-            s_page = 0;
-            return APP_REDRAW_PAGE;
+        if (!long_press && !s_query[0] && s_view == FILE_VIEW_LIST) {
+            if (ui_rect_hit(files_multi_rect(), ev->x0, ev->y0)) { s_select_mode = !s_select_mode; clear_selection(); s_batch_confirm = false; return APP_REDRAW_PAGE; }
+            if (s_select_mode) {
+                if (ui_rect_hit(files_selectall_rect(), ev->x0, ev->y0)) { bool all = selected_count() == s_count; for (int i = 0; i < s_count; ++i) s_files[i].selected = !all; s_batch_confirm = false; return APP_REDRAW_PAGE; }
+                if (ui_rect_hit(files_batchdel_rect(), ev->x0, ev->y0)) {
+                    if (!selected_count()) { snprintf(s_message, sizeof(s_message), "未选择文件"); return APP_REDRAW_PAGE; }
+                    if (!s_batch_confirm) { s_batch_confirm = true; snprintf(s_message, sizeof(s_message), "再点一次删除所选（%d 项）", selected_count()); return APP_REDRAW_PAGE; }
+                    s_batch_confirm = false; batch_delete_selected(); return APP_REDRAW_PAGE;
+                }
+            } else {
+                if (ui_rect_hit(files_grid_rect(), ev->x0, ev->y0)) { s_file_grid = !s_file_grid; s_page = 0; return APP_REDRAW_PAGE; }
+                if (ui_rect_hit(files_search_entry_rect(), ev->x0, ev->y0)) { search_begin(); return APP_REDRAW_FULL; }
+                if (ui_rect_hit(files_sort_rect(), ev->x0, ev->y0)) { s_sort = (file_sort_t)((s_sort + 1) % SORT_COUNT); qsort(s_files, s_count, sizeof(s_files[0]), compare_files); s_page = 0; return APP_REDRAW_PAGE; }
+            }
         }
         int row = files_entry_hit(ev->x0, ev->y0);
         int index = s_page * visible_rows() + row;
         if (row >= 0 && index < s_count) {
+            if (s_select_mode) { s_files[index].selected = !s_files[index].selected; s_batch_confirm = false; return APP_REDRAW_PAGE; }
             if (long_press) {
                 s_selected = s_files[index]; s_view = FILE_VIEW_ACTIONS;
                 s_delete_confirm = false; s_message[0] = 0;
@@ -1292,6 +1331,7 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
 
 static app_redraw_t on_key(app_ctx_t *ctx, int key) {
     s_sd_format_confirm=false;
+    if (s_select_mode) { s_select_mode = false; clear_selection(); s_batch_confirm = false; return APP_REDRAW_PAGE; }
     if (s_view == FILE_VIEW_MOVE) { leave_move(false); return APP_REDRAW_PAGE; }
     if (key == 1) { ui_nav_request(ctx, 0); return APP_REDRAW_NONE; }
     if (s_view == FILE_VIEW_RENAME) { ui_keyboard_end(); s_view = FILE_VIEW_ACTIONS; return APP_REDRAW_PAGE; }
@@ -1320,7 +1360,7 @@ static bool files_back_swipe_area(app_ctx_t *ctx,const ui_gesture_event_t *event
     return s_view!=FILE_VIEW_RENAME || event->y0<UI_SYSTEM_KEYBOARD_TOP;
 }
 static void files_before_lock(app_ctx_t *ctx) { (void)ctx;s_pager_pressed=UI_PAGER_NONE;s_pager_paint_pending=false; }
-static void files_exit(app_ctx_t *ctx) { files_before_lock(ctx); ui_keyboard_end(); search_close(); s_query[0] = 0; if (s_book_stat_fs) { file_search_close(s_book_stat_fs); s_book_stat_fs = NULL; } }
+static void files_exit(app_ctx_t *ctx) { files_before_lock(ctx); ui_keyboard_end(); search_close(); s_query[0] = 0; s_select_mode = false; s_batch_confirm = false; if (s_book_stat_fs) { file_search_close(s_book_stat_fs); s_book_stat_fs = NULL; } }
 
 const app_desc_t app_files = {
     .binary_ui = false,
