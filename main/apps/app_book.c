@@ -481,6 +481,7 @@ static int s_bookmark_page;
 static bool s_bookmark_edit, s_bookmark_delete_confirm, s_bookmark_delete_error;
 static uint32_t s_bookmark_selected;
 static int s_highlight_page, s_highlight_sel = -1;
+static bool s_pick_line; // 点正文选一行做划线的待选态 / pending: tap a body line to highlight it
 typedef struct { char path[288]; } reader_background_item_t;
 static reader_background_item_t *s_backgrounds;
 static int s_background_count, s_background_selected, s_background_page;
@@ -3407,6 +3408,10 @@ static void draw_reader_highlights(uint8_t* fb) {
     ui_fill_round_rect(fb, add, 20, 0xe8);
     ui_draw_control_frame(fb, add, 20, 0x78);
     reader_panel_text_vc(fb, add.x + add.width / 2, top + 57, 20, "记本页", EPD_DRAW_ALIGN_CENTER, false);
+    EpdRect addline = {wide ? w - 288 : 384, top + 30, 122, 54};
+    ui_fill_round_rect(fb, addline, 20, 0xe8);
+    ui_draw_control_frame(fb, addline, 20, 0x78);
+    reader_panel_text_vc(fb, addline.x + addline.width / 2, top + 57, 20, "记本行", EPD_DRAW_ALIGN_CENTER, false);
     if (!count) {
         reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 250, 26, "还没有划线", EPD_DRAW_ALIGN_CENTER, false);
         reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 300, 18, "点右上「记本页」把当前页记一条划线", EPD_DRAW_ALIGN_CENTER, false);
@@ -6642,6 +6647,10 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 copy_text(s_reader_notice, sizeof(s_reader_notice), ok ? "已记划线" : "划线保存失败");
                 s_reader_notice_until = esp_timer_get_time() / 1000 + (ok ? 1600 : 2200);
                 s_highlight_page = 0; s_highlight_sel = -1;
+            } else if (x >= (wide ? w - 288 : 384)) {
+                s_pick_line = true; s_reader_panel = READER_PANEL_NONE;
+                copy_text(s_reader_notice, sizeof(s_reader_notice), "点正文选择一行");
+                s_reader_notice_until = esp_timer_get_time() / 1000 + 2500;
             }
         } else if (s_highlight_sel >= 0 && y >= top + 520 && y < top + 584 && ui_rect_hit((EpdRect){wide ? w / 2 - 300 : 36, top + 520, 280, 64}, x, y)) {
             // 跳转到该划线（章 + 页首字节偏移，与书签同锚点）。/ Jump to the range (chapter + page-start offset, same anchors as bookmarks).
@@ -7348,6 +7357,19 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         return APP_REDRAW_NONE;
     }
     if (s_view == READING) {
+        if (s_pick_line) {
+            size_t ls = 0, le = 0;
+            if (ui_rect_hit(body_rect(), x, y) && book_layout_page_line_at(s_page, x, y, &ls, &le)) {
+                char exc[BOOK_HIGHLIGHT_EXCERPT]; size_t n = 0;
+                if (s_text) for (size_t i = ls; i < s_text_len && i < le && n + 1 < sizeof(exc); ++i) exc[n++] = s_text[i];
+                exc[n] = 0;
+                bool ok = book_highlight_add((uint16_t)s_chapter, (uint32_t)ls, (uint32_t)le, exc);
+                copy_text(s_reader_notice, sizeof(s_reader_notice), ok ? "已记本行划线" : "划线保存失败");
+                s_reader_notice_until = esp_timer_get_time() / 1000 + (ok ? 1600 : 2200);
+            }
+            s_pick_line = false;
+            return APP_REDRAW_PAGE;
+        }
         if (s_toolbar && !(s_reader_panel == READER_PANEL_TOOLS && y < reader_h() - 120 && ui_rect_hit(body_rect(), x, y)))
             return reader_panel_action(ctx, x, y);
         if (!s_reader_fullscreen && ui_rect_hit((EpdRect){32, 75, 64, 64}, x, y))

@@ -986,6 +986,38 @@ static void draw_vertical_page(uint8_t* fb, size_t page, EpdRect rect) {
 
 void book_layout_set_highlight_query(book_layout_highlight_fn fn) { s_hl_query = fn; }
 
+bool book_layout_page_line_at(size_t page, int x, int y, size_t *start, size_t *end) {
+    if (!s_text || s_vertical || page >= s_count || !start || !end) return false;
+    if (x < s_rect.x || x >= s_rect.x + s_rect.width) return false;
+    size_t off = s_pages[page];
+    size_t e = page + 1 < s_count ? s_pages[page + 1] : s_len;
+    int64_t used = page == 0 ? s_lead_height : 0;
+    while (off < e) {
+        size_t visible = skip_image_spacing(off);
+        if (visible != off) { off = visible; continue; }
+        const blk_t* image_block = block_at(off);
+        if (image_block && image_block->image >= 0 && off == image_block->offset) {
+            off = image_block->offset + image_block->len;
+            if (off < e && s_text[off] == '\n') ++off;
+            continue;
+        }
+        size_t next; bool paragraph_end, heading;
+        int line_px, line_width, indent, margin_before, margin_after; uint8_t align;
+        if (!take_line(off, s_rect.width, s_rect.x, &next, &paragraph_end, &line_px, &heading,
+                       &line_width, &indent, &align, &margin_before, &margin_after)) return false;
+        int line_height = line_height_for(line_px);
+        int leading = used ? margin_before : 0;
+        if (used + leading + line_height > s_rect.height) return false;
+        used += leading;
+        int line_top = s_rect.y + (int)used;
+        if (y >= line_top && y < line_top + line_height) { *start = off; *end = next; return true; }
+        used += line_height;
+        if (paragraph_end) used += gap_for(line_height, heading) + margin_after;
+        off = next;
+    }
+    return false;
+}
+
 void book_layout_draw_page(uint8_t* fb, size_t page, EpdRect rect, int px) {
     if (!fb || page >= s_count || px != s_px || rect.width != s_rect.width ||
         rect.height != s_rect.height || rect.x < 0 || rect.y < 0 ||

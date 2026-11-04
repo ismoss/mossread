@@ -105,6 +105,11 @@ size_t book_layout_page_start_offset(size_t page);
 /// Adds display only (no relayout/glyph change); applies to horizontal layout (vertical skips it).
 typedef bool (*book_layout_highlight_fn)(size_t start, size_t end);
 void book_layout_set_highlight_query(book_layout_highlight_fn fn);
+/// 按点取行：给当前页内一点（与 draw_page 同坐标系），返回该行原文字节范围 [start,end)；
+/// 未落在文字行内或竖排返回 false。供"点选一行做标注"用，只读不改排版。
+/// Line at a point: given a point on the current page (same coords as draw_page), return that
+/// line's source byte range [start,end); false when outside a text line or in vertical layout.
+bool book_layout_page_line_at(size_t page, int x, int y, size_t *start, size_t *end);
 
 /// 空闲预绘游标；不持有正文或字体指针，布局代次变化立即失效。
 /// Idle drawing cursor: borrows no text/font pointers and expires on layout generation changes.
