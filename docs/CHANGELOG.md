@@ -21,6 +21,10 @@
 按版本简述对用户可见的变化；使用方法见 [README](../README.zh-CN.md)。
 User-visible changes by release; see [README](../README.md) for usage.
 
+## 2026-11-03 · 二改 mod104
+
+- **-mod104（2026-11-03，3,296,176B / `c1bcb41e…f8ac`，划线导出增强）**：划线导出改写到 `books/highlights.md`——带 **YAML front matter**（`book` / `count`），正文**按章分组**（`## 章节` 下逐个 `- 摘录 #标签 //笔记`）；因是 .md，可直接在本机阅读器打开（Obsidian 也能用）。真机待验。
+
 ## 2026-11-03 · 二改 mod103
 
 - **-mod103（2026-11-03，3,296,080B / `83fb94df…0ed8`，P2 Markdown 渲染）**：`.md` 现在做**轻量渲染**——正文里去掉行首 `#`/`>` 与内联 `*`、`` ` `` 标记；`# 标题` 行作为**章节**进目录（仅 .md 生效，绝不改动 .txt；不写回文件，仅显示层清理）。真机待验。
