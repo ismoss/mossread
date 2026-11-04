@@ -105,6 +105,21 @@ static void md_clean(char *s, size_t *len) {
             if (j < *len && s[j] == '>') {
                 i = j + 1; while (i < *len && (s[i] == ' ' || s[i] == '\t')) ++i; line_start = false; continue;
             }
+            // 代码围栏行（```…）整行丢弃。/ Drop code-fence lines (```…).
+            if (j + 2 < *len && s[j] == '`' && s[j + 1] == '`' && s[j + 2] == '`') {
+                i = j; while (i < *len && s[i] != '\n') ++i; line_start = false; continue;
+            }
+            // 无序列表标记（- / + / * 后跟空格）。/ Unordered list marker (- / + / * then space).
+            if (j + 1 < *len && (s[j] == '-' || s[j] == '+' || s[j] == '*') && (s[j + 1] == ' ' || s[j + 1] == '\t')) {
+                i = j + 1; while (i < *len && (s[i] == ' ' || s[i] == '\t')) ++i; line_start = false; continue;
+            }
+            // 有序列表标记（N. 后跟空格）。/ Ordered list marker (N. then space).
+            if (isdigit((unsigned char)s[j])) {
+                size_t k = j; while (k < *len && isdigit((unsigned char)s[k])) ++k;
+                if (k + 1 < *len && s[k] == '.' && (s[k + 1] == ' ' || s[k + 1] == '\t')) {
+                    i = k + 1; while (i < *len && (s[i] == ' ' || s[i] == '\t')) ++i; line_start = false; continue;
+                }
+            }
             line_start = false;
         }
         if (c == '*' || c == '`') { ++i; continue; }
