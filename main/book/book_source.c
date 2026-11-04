@@ -17,7 +17,8 @@ esp_err_t book_open(const char *path) {
     if (!path || !*path) return ESP_ERR_INVALID_ARG;
     const char *ext = strrchr(path, '.');
     if (ext && !strcasecmp(ext, ".epub")) return book_epub_open(path, &s_epub);
-    if (!ext || strcasecmp(ext, ".txt")) return ESP_ERR_NOT_SUPPORTED;
+    if (!ext || (strcasecmp(ext, ".txt") && strcasecmp(ext, ".md") && strcasecmp(ext, ".markdown")))
+        return ESP_ERR_NOT_SUPPORTED;
     esp_err_t err = book_txt_open(&s_book, path);
     if (err != ESP_OK) book_close();
     return err;

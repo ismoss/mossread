@@ -146,7 +146,8 @@ static int book_order(const lock_book_t *a, const lock_book_t *b) {
 static bool collect_book(lock_library_t *library, const char *path,
                           const struct stat *st, const book_progress_t *saved) {
     const char *ext = strrchr(path, '.');
-    if (!ext || (strcasecmp(ext, ".epub") && strcasecmp(ext, ".txt")) ||
+    if (!ext || (strcasecmp(ext, ".epub") && strcasecmp(ext, ".txt") &&
+                 strcasecmp(ext, ".md") && strcasecmp(ext, ".markdown")) ||
         !S_ISREG(st->st_mode) || st->st_size < 0 || (uint64_t)st->st_size > UINT32_MAX ||
         strlen(path) >= BOOK_STORE_PATH_MAX || hidden_book(library->hidden, path)) return false;
     // 只保留常读/最近的十五条；总数继续完整统计，目录和字体不作书籍计数。

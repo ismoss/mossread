@@ -225,7 +225,8 @@ static void copy_utf8(char *dst, size_t cap, const char *src) {
 
 static bool is_book_path(const char *path) {
     const char *ext = strrchr(path, '.');
-    return ext && (!strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt"));
+    return ext && (!strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt") ||
+                   !strcasecmp(ext, ".md") || !strcasecmp(ext, ".markdown"));
 }
 
 static bool sibling_path(const char *name, char out[288]) {
@@ -474,7 +475,8 @@ static bool supported(int folder, const char *name) {
     if (!name[0] || name[0] == '.' || !strncmp(name, "._", 2)) return false;
     const char *ext = strrchr(name, '.');
     if (!ext) return false;
-    if (folder == 0) return !strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt");
+    if (folder == 0) return !strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt") ||
+                              !strcasecmp(ext, ".md") || !strcasecmp(ext, ".markdown");
     if (folder == 1) return !strcasecmp(ext, ".jpg") || !strcasecmp(ext, ".jpeg") || !strcasecmp(ext, ".png") || !strcasecmp(ext, ".webp");
     return !strcasecmp(ext, ".ttf") || !strcasecmp(ext, ".otf");
 }
@@ -973,7 +975,8 @@ static app_redraw_t on_tick(app_ctx_t *ctx) {
 static void open_selected(app_ctx_t *ctx) {
     const char *ext = strrchr(s_selected.name, '.');
     if (!ext) { snprintf(s_message, sizeof(s_message), "没有可用的打开方式"); return; }
-    if (!strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt")) {
+    if (!strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt") ||
+        !strcasecmp(ext, ".md") || !strcasecmp(ext, ".markdown")) {
         extern const app_desc_t app_book;
         if (app_book_request_open(s_selected.path)) ctx->request_app = &app_book;
     } else if (!strcasecmp(ext, ".jpg") || !strcasecmp(ext, ".jpeg") || !strcasecmp(ext, ".png") || !strcasecmp(ext, ".webp")) {
@@ -1209,7 +1212,8 @@ static void book_stat_cb(const char *path, const struct stat *info, void *ctx) {
     (void)ctx;
     if (!info || !S_ISREG(info->st_mode)) return;
     const char *ext = strrchr(path, '.'); if (!ext) return;
-    if (strcasecmp(ext, ".epub") && strcasecmp(ext, ".txt")) return;
+    if (strcasecmp(ext, ".epub") && strcasecmp(ext, ".txt") &&
+        strcasecmp(ext, ".md") && strcasecmp(ext, ".markdown")) return;
     ++s_book_stat_count; s_book_stat_bytes += (uint64_t)info->st_size;
 }
 static void book_stat_start(void) {

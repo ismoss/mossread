@@ -172,7 +172,8 @@ esp_err_t book_store_delete(const char* path, bool* removed) {
     base = base ? base + 1 : name;
     if (strlen(base) > 255) return ESP_ERR_INVALID_ARG;
     const char* ext = strrchr(base, '.');
-    if (!ext || (strcasecmp(ext, ".txt") && strcasecmp(ext, ".epub"))) return ESP_ERR_INVALID_ARG;
+    if (!ext || (strcasecmp(ext, ".txt") && strcasecmp(ext, ".epub") &&
+                 strcasecmp(ext, ".md") && strcasecmp(ext, ".markdown"))) return ESP_ERR_INVALID_ARG;
     struct stat st;
     if (stat(root, &st) != 0 || !S_ISDIR(st.st_mode)) return ESP_ERR_INVALID_STATE;
     // FAT 没有符号链接；主机测试用 lstat，确保不会跟随主机链接删其他文件。
