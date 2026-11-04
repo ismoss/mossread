@@ -7123,10 +7123,12 @@ static app_redraw_t manage_action(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 static app_redraw_t editor_save(app_ctx_t* ctx) {
     if (s_edit_is_note) {
         if (ui_keyboard_pending()) { copy_text(s_editor_notice, sizeof(s_editor_notice), "请先选择候选字"); return APP_REDRAW_PAGE; }
+        int keep = s_note_index;
         if (s_note_index >= 0) (void)book_highlight_set_note(s_note_index, s_editor_title);
         ui_keyboard_end();
         s_edit_is_note = false; s_note_index = -1;
-        s_view = READING;
+        // 保存后回到划线面板并选中该条，便于连续操作。/ Return to the highlights panel with that row selected.
+        s_view = READING; s_reader_panel = READER_PANEL_HIGHLIGHTS; s_highlight_sel = keep;
         copy_text(s_reader_notice, sizeof(s_reader_notice), "笔记已保存");
         s_reader_notice_until = esp_timer_get_time() / 1000 + 1600;
         return APP_REDRAW_PAGE;
@@ -7168,7 +7170,7 @@ static app_redraw_t editor_paint(app_ctx_t* ctx, bool field) {
 static app_redraw_t editor_action(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (y < 134) {
         if (x < 160) {
-            if (s_edit_is_note) { ui_keyboard_end(); s_edit_is_note = false; s_note_index = -1; s_view = READING; return APP_REDRAW_PAGE; }
+            if (s_edit_is_note) { int keep = s_note_index; ui_keyboard_end(); s_edit_is_note = false; s_note_index = -1; s_view = READING; s_reader_panel = READER_PANEL_HIGHLIGHTS; s_highlight_sel = keep; return APP_REDRAW_PAGE; }
             ui_keyboard_end(); free(s_editor_cover); s_editor_cover = NULL; s_view = SHELF; return APP_REDRAW_PAGE;
         }
         if (x > 510) return editor_save(ctx);
@@ -8434,7 +8436,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
         return APP_REDRAW_PAGE;
     }
     if (s_view != READING && s_view != TOC) {
-        if (s_view == EDIT && s_edit_is_note) { ui_keyboard_end(); s_edit_is_note = false; s_note_index = -1; s_view = READING; return APP_REDRAW_PAGE; }
+        if (s_view == EDIT && s_edit_is_note) { int keep = s_note_index; ui_keyboard_end(); s_edit_is_note = false; s_note_index = -1; s_view = READING; s_reader_panel = READER_PANEL_HIGHLIGHTS; s_highlight_sel = keep; return APP_REDRAW_PAGE; }
         if (key == UI_KEY_2) { ui_nav_request(ctx, 0); return APP_REDRAW_NONE; }
         if (s_view == EDIT) { ui_keyboard_end(); free(s_editor_cover); s_editor_cover = NULL; s_view = MANAGE; return APP_REDRAW_PAGE; }
         if (s_view == SEARCH) { search_finish(ctx, false); return APP_REDRAW_PAGE; }
