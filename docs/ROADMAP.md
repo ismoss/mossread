@@ -92,13 +92,15 @@ covers user-visible changes per release; volatile state lives in the untracked
 | 划线·稳定性 | mod108 | 返回/退页/锁屏时清选段待选态与选中项，防解锁后误触加划线 |
 | 划线·笔记体验 | mod109 | 笔记保存/取消后回到划线面板并选中该条 |
 | P2·Markdown 渲染增强 | mod110 | .md 额外清理列表标记（-/+/ * /N.）与代码围栏 ```（仅 .md，显示层） |
+| 文件页修复 | mod111 | 表头不再误当返回且对齐；md 可打开；根页留白；WiFi 传输文案 |
+| 划线修复 | mod112 | 面板重排(无半字/标签溢出)、第7键图标、下划线加粗+缓存修复、导出 mossread_notes/<书名>.md |
 | 品牌 | mod55 | 系统可见名统一为 **mossread**；开机画面换成 mossread 字标 + 内建图元画的星图；热点名 `mossread-XXXX` |
 | 状态与观感 | mod50、mod51 | 设置页网络状态实时刷新；回到锁屏整屏定稿（清掉密码圈圈残影） |
 | 锁屏收尾 | mod52–mod54 | GC16 收尾锁屏面、透明书封横屏适配；**圆点残影真因 = 锁屏图缓存里存过带键盘的帧**（mod53 魔数 +1 并解锁即删缓存），深睡保留锁屏画面；**mod54 修好自动锁屏被后台网络会话卡住**（5 分钟不熄屏的真因）|
 
 ## 进行中 / In flight
 
-- 无（mod110 已发版，等待真机验收；P1 完成；字级划线 9 片+打磨(94–109)，仅剩「长按拖选」手势（可选）；P2：Markdown 识别/渲染/增强(102/103/110)；其余 P2 大/险项待真机后再定）
+- 无（mod112 已发版，等待真机验收；P1 完成、字级划线 9 片+打磨、P2 Markdown；**mod111/112 为真机反馈修复**（文件页表头误返回/md打开/根页布局、划线面板重排+图标+下划线稳定+导出到 mossread_notes）。剩余「长按拖选」手势（可选）与 P2 大/险项待真机后再定）
 
 ## 待做 / Planned
 
@@ -125,4 +127,4 @@ covers user-visible changes per release; volatile state lives in the untracked
 
 ## 验收状态 / Acceptance
 
-**mod1–mod110 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
+**mod1–mod112 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
