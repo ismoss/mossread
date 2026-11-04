@@ -483,6 +483,7 @@ static int s_bookmark_page;
 static bool s_bookmark_edit, s_bookmark_delete_confirm, s_bookmark_delete_error;
 static uint32_t s_bookmark_selected;
 static int s_highlight_page, s_highlight_sel = -1;
+static int s_highlight_filter; // 0 全部，1..3 按标签筛选 / 0 all, 1..3 filter by tag
 static bool s_pick_line; // 点正文选段做划线的待选态 / pending: tap body lines to highlight a span
 static bool s_pick_armed; // 已选起点行、等终点行 / start line chosen, awaiting end line
 static size_t s_pick_start, s_pick_end; // 起点/终点行的原文字节范围 / start/end line byte ranges
@@ -3445,11 +3446,15 @@ static void export_highlights(void) {
     snprintf(s_reader_notice, sizeof(s_reader_notice), "已导出 %d 条到 books/highlights.md", n);
     s_reader_notice_until = esp_timer_get_time() / 1000 + 2200;
 }
+static bool hl_match(int i) { return s_highlight_filter == 0 || (int)(book_highlight_tag(i) & 3) == s_highlight_filter; }
+static int hl_match_count(void) { int n = book_highlight_count(), c = 0; for (int i = 0; i < n; ++i) if (hl_match(i)) ++c; return c; }
+// 反向第 k 个匹配项（0 = 最新）。/ k-th matching record counted newest-first (0 = newest).
+static int hl_nth_match(int k) { int n = book_highlight_count(), c = 0; for (int i = n - 1; i >= 0; --i) { if (hl_match(i)) { if (c == k) return i; ++c; } } return -1; }
 static int highlight_rows(void) { return (s_highlight_sel >= 0 ? 424 : 492) / bookmark_row_step(); }
 static void draw_reader_highlights(uint8_t* fb) {
     const int top = bookmarks_top(), w = reader_w();
     const bool wide = reader_panel_landscape();
-    int count = book_highlight_count();
+    int count = hl_match_count();
     char heading[32]; snprintf(heading, sizeof(heading), "划线 %d 条", count);
     draw_sheet(fb, top, heading);
     int rows = highlight_rows();
@@ -3468,14 +3473,21 @@ static void draw_reader_highlights(uint8_t* fb) {
     ui_fill_round_rect(fb, exp, 20, 0xe8);
     ui_draw_control_frame(fb, exp, 20, 0x78);
     reader_panel_text_vc(fb, exp.x + exp.width / 2, top + 57, 20, "导出", EPD_DRAW_ALIGN_CENTER, false);
+    {
+        EpdRect flt = {36, top + 590, wide ? 200 : 180, 56};
+        ui_fill_round_rect(fb, flt, 18, 0xe8);
+        ui_draw_control_frame(fb, flt, 18, 0x78);
+        char ft[24]; snprintf(ft, sizeof(ft), "筛选·%s", s_highlight_filter ? hl_tags[s_highlight_filter] : "全部");
+        reader_panel_text_vc(fb, flt.x + flt.width / 2, top + 618, 20, ft, EPD_DRAW_ALIGN_CENTER, false);
+    }
     if (!count) {
-        reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 250, 26, "还没有划线", EPD_DRAW_ALIGN_CENTER, false);
-        reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 300, 18, "点右上「记本页」把当前页记一条划线", EPD_DRAW_ALIGN_CENTER, false);
+        reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 250, 26, s_highlight_filter ? "该标签暂无划线" : "还没有划线", EPD_DRAW_ALIGN_CENTER, false);
+        reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 300, 18, s_highlight_filter ? "点左下「筛选」切回全部" : "点右上「记本页」把当前页记一条划线", EPD_DRAW_ALIGN_CENTER, false);
         return;
     }
     int first = s_highlight_page * rows;
     for (int row = 0; row < rows && first + row < count; ++row) {
-        int newest = count - 1 - (first + row);
+        int newest = hl_nth_match(first + row); if (newest < 0) break;
         uint16_t ch = 0; uint32_t st = 0, en = 0; const char* ex = "";
         book_highlight_at(newest, &ch, &st, &en, &ex);
         EpdRect item = bookmark_row_rect(row);
@@ -6663,7 +6675,7 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
             } else if (i == BOOK_TOOL_HIGHLIGHT) {
                 s_reader_panel = READER_PANEL_HIGHLIGHTS;
                 book_highlight_load(s_path);
-                s_highlight_page = 0; s_highlight_sel = -1;
+                s_highlight_page = 0; s_highlight_sel = -1; s_highlight_filter = 0;
             } else if (i == BOOK_TOOL_LANDSCAPE) {
                 // 自适应开：这一键在"锁定/取消锁定"间切换；关：三档循环。
                 // Adaptive on: toggle lock; off: cycle the three manual stops.
@@ -6695,7 +6707,7 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
         const int top = bookmarks_top();
         const bool wide = reader_panel_landscape();
         const int w = reader_w();
-        int count = book_highlight_count();
+        int count = hl_match_count();
         int rows = highlight_rows();
         int pages = count ? (count + rows - 1) / rows : 1;
         if (y < top) { s_reader_panel = READER_PANEL_NONE; book_highlight_unload(); }
@@ -6749,7 +6761,7 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                     copy_text(s_reader_notice, sizeof(s_reader_notice), m);
                     s_reader_notice_until = esp_timer_get_time() / 1000 + 1600;
                 }
-            } else if (ui_rect_hit((EpdRect){x0 + 2 * (bw + gap), top + 520, bw, 64}, x, y)) {
+            } else if (ui_rect_hit((EpdRect){x0 + 3 * (bw + gap), top + 520, bw, 64}, x, y)) {
                 if (book_highlight_remove(s_highlight_sel)) {
                     copy_text(s_reader_notice, sizeof(s_reader_notice), "划线已删除");
                     s_reader_notice_until = esp_timer_get_time() / 1000 + 1600;
@@ -6757,14 +6769,17 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 }
             }
         } else if (y >= top + (s_highlight_sel >= 0 ? 590 : 570)) {
-            if (x < w / 2 && s_highlight_page > 0) --s_highlight_page;
+            if (ui_rect_hit((EpdRect){36, top + 590, wide ? 200 : 180, 56}, x, y)) {
+                s_highlight_filter = (s_highlight_filter + 1) % 4;
+                s_highlight_sel = -1; s_highlight_page = 0;
+            } else if (x < w / 2 && s_highlight_page > 0) --s_highlight_page;
             else if (x >= w / 2 && s_highlight_page + 1 < pages) ++s_highlight_page;
         } else if (count && y >= top + 96) {
             int row = ((int)y - (top + 96)) / bookmark_row_step();
             int pos = s_highlight_page * rows + row;
             if (row >= 0 && row < rows && pos < count && ui_rect_hit(bookmark_row_rect(row), x, y)) {
-                int newest = count - 1 - pos;
-                s_highlight_sel = (s_highlight_sel == newest) ? -1 : newest;
+                int newest = hl_nth_match(pos);
+                if (newest >= 0) s_highlight_sel = (s_highlight_sel == newest) ? -1 : newest;
             }
         }
         invalidate_prep();
