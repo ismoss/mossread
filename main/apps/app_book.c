@@ -483,7 +483,9 @@ static int s_bookmark_page;
 static bool s_bookmark_edit, s_bookmark_delete_confirm, s_bookmark_delete_error;
 static uint32_t s_bookmark_selected;
 static int s_highlight_page, s_highlight_sel = -1;
-static bool s_pick_line; // 点正文选一行做划线的待选态 / pending: tap a body line to highlight it
+static bool s_pick_line; // 点正文选段做划线的待选态 / pending: tap body lines to highlight a span
+static bool s_pick_armed; // 已选起点行、等终点行 / start line chosen, awaiting end line
+static size_t s_pick_start, s_pick_end; // 起点/终点行的原文字节范围 / start/end line byte ranges
 static const char* const hl_tags[4] = {"无", "重要", "待读", "疑问"};
 typedef struct { char path[288]; } reader_background_item_t;
 static reader_background_item_t *s_backgrounds;
@@ -3453,7 +3455,7 @@ static void draw_reader_highlights(uint8_t* fb) {
     EpdRect addline = {wide ? w - 288 : 384, top + 30, 122, 54};
     ui_fill_round_rect(fb, addline, 20, 0xe8);
     ui_draw_control_frame(fb, addline, 20, 0x78);
-    reader_panel_text_vc(fb, addline.x + addline.width / 2, top + 57, 20, "记本行", EPD_DRAW_ALIGN_CENTER, false);
+    reader_panel_text_vc(fb, addline.x + addline.width / 2, top + 57, 20, "选段", EPD_DRAW_ALIGN_CENTER, false);
     EpdRect exp = {wide ? w - 420 : 250, top + 30, 122, 54};
     ui_fill_round_rect(fb, exp, 20, 0xe8);
     ui_draw_control_frame(fb, exp, 20, 0x78);
@@ -6700,8 +6702,9 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 s_reader_notice_until = esp_timer_get_time() / 1000 + (ok ? 1600 : 2200);
                 s_highlight_page = 0; s_highlight_sel = -1;
             } else if (x >= (wide ? w - 288 : 384)) {
-                s_pick_line = true; s_reader_panel = READER_PANEL_NONE;
-                copy_text(s_reader_notice, sizeof(s_reader_notice), "点正文选择一行");
+                s_pick_line = true; s_pick_armed = false; s_pick_start = s_pick_end = 0;
+                s_reader_panel = READER_PANEL_NONE;
+                copy_text(s_reader_notice, sizeof(s_reader_notice), "点开始的一行");
                 s_reader_notice_until = esp_timer_get_time() / 1000 + 2500;
             } else if (x >= (wide ? w - 420 : 250)) {
                 export_highlights();
@@ -7450,14 +7453,26 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         if (s_pick_line) {
             size_t ls = 0, le = 0;
             if (ui_rect_hit(body_rect(), x, y) && book_layout_page_line_at(s_page, x, y, &ls, &le)) {
-                char exc[BOOK_HIGHLIGHT_EXCERPT]; size_t n = 0;
-                if (s_text) for (size_t i = ls; i < s_text_len && i < le && n + 1 < sizeof(exc); ++i) exc[n++] = s_text[i];
-                exc[n] = 0;
-                bool ok = book_highlight_add((uint16_t)s_chapter, (uint32_t)ls, (uint32_t)le, exc);
-                copy_text(s_reader_notice, sizeof(s_reader_notice), ok ? "已记本行划线" : "划线保存失败");
-                s_reader_notice_until = esp_timer_get_time() / 1000 + (ok ? 1600 : 2200);
+                if (!s_pick_armed) {
+                    // 第一次点：记下起点行，等终点行。/ First tap: remember the start line, await the end line.
+                    s_pick_start = ls; s_pick_end = le; s_pick_armed = true;
+                    copy_text(s_reader_notice, sizeof(s_reader_notice), "再点结束的一行");
+                    s_reader_notice_until = esp_timer_get_time() / 1000 + 2500;
+                } else {
+                    // 第二次点：合并成跨行区间并记一条划线。/ Second tap: merge into a cross-line span and add one highlight.
+                    size_t lo = s_pick_start < ls ? s_pick_start : ls;
+                    size_t hi = s_pick_end > le ? s_pick_end : le;
+                    char exc[BOOK_HIGHLIGHT_EXCERPT]; size_t n = 0;
+                    if (s_text) for (size_t i = lo; i < s_text_len && i < hi && n + 1 < sizeof(exc); ++i) exc[n++] = s_text[i];
+                    exc[n] = 0;
+                    bool ok = book_highlight_add((uint16_t)s_chapter, (uint32_t)lo, (uint32_t)hi, exc);
+                    copy_text(s_reader_notice, sizeof(s_reader_notice), ok ? "已记选段划线" : "划线保存失败");
+                    s_reader_notice_until = esp_timer_get_time() / 1000 + (ok ? 1600 : 2200);
+                    s_pick_line = false; s_pick_armed = false;
+                }
+            } else {
+                s_pick_line = false; s_pick_armed = false;
             }
-            s_pick_line = false;
             return APP_REDRAW_PAGE;
         }
         if (s_toolbar && !(s_reader_panel == READER_PANEL_TOOLS && y < reader_h() - 120 && ui_rect_hit(body_rect(), x, y)))
