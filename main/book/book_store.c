@@ -174,6 +174,9 @@ esp_err_t book_store_delete(const char* path, bool* removed) {
     const char* ext = strrchr(base, '.');
     if (!ext || (strcasecmp(ext, ".txt") && strcasecmp(ext, ".epub") &&
                  strcasecmp(ext, ".md") && strcasecmp(ext, ".markdown"))) return ESP_ERR_INVALID_ARG;
+    // 划线导出产物不算书（旧版 highlights.md/txt；新目录 mossread_notes）。/ Highlight export artifacts are not books.
+    if (strstr(name, "/mossread_notes/") || !strcasecmp(base, "highlights.md") || !strcasecmp(base, "highlights.txt"))
+        return ESP_ERR_INVALID_ARG;
     struct stat st;
     if (stat(root, &st) != 0 || !S_ISDIR(st.st_mode)) return ESP_ERR_INVALID_STATE;
     // FAT 没有符号链接；主机测试用 lstat，确保不会跟随主机链接删其他文件。

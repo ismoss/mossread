@@ -200,12 +200,12 @@ static bool file_pager_event(app_ctx_t *ctx,const ui_gesture_event_t *ev,app_red
     return true;
 }
 static EpdRect home_transfer_rect(int index) {
-    return (EpdRect){36 + index * 208, 332, 196, 96};
+    return (EpdRect){36 + index * 208, 336, 196, 92};
 }
 
 // 存储卡卡片的位置，绘制与命中测试共用一份，免得两处各写一个坐标。
 // The storage card's rect, shared by drawing and hit testing so the two cannot drift apart.
-static EpdRect storage_card_rect(void) { return (EpdRect){36, 171, 612, 120}; }
+static EpdRect storage_card_rect(void) { return (EpdRect){36, 171, 612, 132}; }
 
 // 需要格式化：卡在、没挂上、而且不是超时。超时是接触或供电问题，格式化解决不了，那种情况下
 // 说"格式化可能可以解决"会把用户带偏。
@@ -223,7 +223,16 @@ static void copy_utf8(char *dst, size_t cap, const char *src) {
     memcpy(dst, src, n); dst[n] = 0;
 }
 
+// 划线导出产物（旧版写进 books 的 highlights.md/txt，以及新目录 mossread_notes）不算书籍。
+// Highlight export artifacts (legacy highlights.md/txt in books, and the new mossread_notes dir) are not books.
+static bool ignored_book_artifact(const char *path) {
+    if (!path) return false;
+    if (strstr(path, "/mossread_notes/")) return true;
+    const char *b = strrchr(path, '/'); b = b ? b + 1 : path;
+    return !strcasecmp(b, "highlights.md") || !strcasecmp(b, "highlights.txt");
+}
 static bool is_book_path(const char *path) {
+    if (ignored_book_artifact(path)) return false;
     const char *ext = strrchr(path, '.');
     return ext && (!strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt") ||
                    !strcasecmp(ext, ".md") || !strcasecmp(ext, ".markdown"));
@@ -475,8 +484,11 @@ static bool supported(int folder, const char *name) {
     if (!name[0] || name[0] == '.' || !strncmp(name, "._", 2)) return false;
     const char *ext = strrchr(name, '.');
     if (!ext) return false;
-    if (folder == 0) return !strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt") ||
-                              !strcasecmp(ext, ".md") || !strcasecmp(ext, ".markdown");
+    if (folder == 0) {
+        if (!strcasecmp(name, "highlights.md") || !strcasecmp(name, "highlights.txt")) return false; // 旧版导出产物
+        return !strcasecmp(ext, ".epub") || !strcasecmp(ext, ".txt") ||
+               !strcasecmp(ext, ".md") || !strcasecmp(ext, ".markdown");
+    }
     if (folder == 1) return !strcasecmp(ext, ".jpg") || !strcasecmp(ext, ".jpeg") || !strcasecmp(ext, ".png") || !strcasecmp(ext, ".webp");
     return !strcasecmp(ext, ".ttf") || !strcasecmp(ext, ".otf");
 }
@@ -546,6 +558,7 @@ static void scan_folder(int folder) {
         if (strnlen(entry->d_name, sizeof(item->name)) >= sizeof(item->name)) continue;
         strcpy(item->name, entry->d_name);
         item->is_dir = is_dir;
+        item->selected = false; // 每次扫描清掉多选残留，避免“已选 N”错位 / clear stale selection on each scan
         ++s_count;
     }
     closedir(dir);
@@ -800,6 +813,13 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         }
     } else {
         ui_text(fb, 36, 91, 52, "文件", EPD_DRAW_ALIGN_LEFT, false);
+        // 根页也放 多选/网格/搜索：点它们进入 TF 卡目录并套用对应模式。/ Root-page shortcuts into the TF-card list.
+        {
+            EpdRect r_m = files_multi_rect(), r_g = files_grid_rect(), r_s = files_search_entry_rect();
+            ui_text_vc(fb, r_m.x + r_m.width / 2, 107, 22, "多选", EPD_DRAW_ALIGN_CENTER, false);
+            ui_text_vc(fb, r_g.x + r_g.width / 2, 107, 22, s_file_grid ? "列表" : "网格", EPD_DRAW_ALIGN_CENTER, false);
+            ui_text_vc(fb, r_s.x + r_s.width / 2, 107, 22, "搜索", EPD_DRAW_ALIGN_CENTER, false);
+        }
         EpdRect storage = storage_card_rect();
         ui_fill_round_rect(fb, storage, 24, UI_GRAY_WHITE);
         file_card_border(fb, storage, 24);
@@ -818,21 +838,21 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
             snprintf(usage, sizeof(usage), "请检查 TF 卡");
         }
         ui_text(fb, 624, 189, 21, total, EPD_DRAW_ALIGN_RIGHT, false);
-        ui_text(fb, 58, 227, 19, usage, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 58, 230, 19, usage, EPD_DRAW_ALIGN_LEFT, false);
         {
             char bstat[64];
             if (!s_book_stat_done) snprintf(bstat, sizeof(bstat), "书籍统计…");
             else if (s_book_stat_count) { char amt[16]; storage_amount(amt, sizeof(amt), s_book_stat_bytes); snprintf(bstat, sizeof(bstat), "书籍 %u 本 · %s", s_book_stat_count, amt); }
             else snprintf(bstat, sizeof(bstat), "书籍 0 本");
-            ui_text(fb, 58, 266, 20, bstat, EPD_DRAW_ALIGN_LEFT, false);
+            ui_text(fb, 58, 284, 20, bstat, EPD_DRAW_ALIGN_LEFT, false);
         }
-        EpdRect capacity = {58, 252, 566, 6};
+        EpdRect capacity = {58, 262, 566, 6};
         ui_fill_round_rect(fb, capacity, 3, 0xa0);
         if (storage_space_valid(&s_sd)) {
             capacity.width = (int)((s_sd.filesystem_bytes - s_sd.free_bytes) * 566 / s_sd.filesystem_bytes);
             if (capacity.width > 0) ui_fill_round_rect(fb, capacity, 3, 0x68);
         }
-        ui_text(fb, 42, 303, 21, "传输文件", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 42, 310, 21, "传输文件", EPD_DRAW_ALIGN_LEFT, false);
         static const char *const methods[] = {"WiFi传输", "热点传输", "USB传输"};
         static const char *const details[] = {"同一网络", "连接设备热点", "连接电脑"};
         for (int i = 0; i < 3; ++i) {
@@ -1020,7 +1040,7 @@ static void batch_delete_selected(void) {
         if (file_tree_delete(p, file_deleted, NULL) == ESP_OK) ++done; else failed = true;
     }
     repair_deleted_directories(); book_store_notify_changed();
-    s_select_mode = false; s_batch_confirm = false; rescan_current();
+    s_select_mode = false; s_batch_confirm = false; s_view = FILE_VIEW_LIST; rescan_current();
     snprintf(s_message, sizeof(s_message), failed ? "部分删除失败，已删 %u 项" : "已删除 %u 项", done);
 }
 
@@ -1213,6 +1233,7 @@ static app_redraw_t search_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev)
 static void book_stat_cb(const char *path, const struct stat *info, void *ctx) {
     (void)ctx;
     if (!info || !S_ISREG(info->st_mode)) return;
+    if (ignored_book_artifact(path)) return;
     const char *ext = strrchr(path, '.'); if (!ext) return;
     if (strcasecmp(ext, ".epub") && strcasecmp(ext, ".txt") &&
         strcasecmp(ext, ".md") && strcasecmp(ext, ".markdown")) return;
@@ -1375,6 +1396,19 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         else app_transfer_request_usb_start();
         ctx->request_app = &app_transfer;
         return APP_REDRAW_NONE;
+    }
+    // 根页右上角 多选/网格/搜索：进入 TF 卡目录（/sdcard）并套用对应模式。
+    // Root-page top-right shortcuts: enter the TF-card list (/sdcard) with the chosen mode.
+    if (!long_press) {
+        if (ui_rect_hit(files_multi_rect(), ev->x0, ev->y0)) {
+            s_folder = 3; copy_utf8(s_dir, sizeof(s_dir), "/sdcard"); scan_folder(3); s_select_mode = true; return APP_REDRAW_PAGE;
+        }
+        if (ui_rect_hit(files_grid_rect(), ev->x0, ev->y0)) {
+            s_folder = 3; copy_utf8(s_dir, sizeof(s_dir), "/sdcard"); scan_folder(3); s_file_grid = !s_file_grid; s_page = 0; return APP_REDRAW_PAGE;
+        }
+        if (ui_rect_hit(files_search_entry_rect(), ev->x0, ev->y0)) {
+            s_folder = 3; copy_utf8(s_dir, sizeof(s_dir), "/sdcard"); scan_folder(3); search_begin(); return APP_REDRAW_FULL;
+        }
     }
     if (ev->y0 >= 520 && ev->y0 < 975) {
         int row = (ev->y0 - 520) / 91;
