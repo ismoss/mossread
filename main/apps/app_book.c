@@ -6311,6 +6311,8 @@ static app_redraw_t apply_reader_option(app_ctx_t* ctx, int kind) {
 // Return to this opening's origin; shelf category/page were saved before opening, independently of TOC/tools.
 static app_redraw_t reader_return(app_ctx_t *ctx) {
     save_progress();
+    // 离开正文清掉划线选段待选态与选中项，避免下次误触加划线。/ Clear pending span-pick & selection when leaving the body.
+    s_pick_line = false; s_pick_armed = false; s_highlight_sel = -1;
     if (s_reader_return_home) {
         ui_nav_request(ctx, 0);
         return APP_REDRAW_NONE;
@@ -7703,6 +7705,7 @@ static void on_enter(app_ctx_t* ctx) {
 static void book_on_exit(app_ctx_t* ctx) {
     shelf_scan_abort();
     reader_indent_hold_cancel();
+    s_pick_line = false; s_pick_armed = false; s_highlight_sel = -1;
     // 离开阅读页把旋转交还竖屏；其余页面永远以竖屏绘制。
     // Leaving Books hands the rotation back; every other page always draws portrait.
     reader_rotation_leave();
@@ -8776,6 +8779,7 @@ static void before_lock(app_ctx_t* ctx) {
     bool landscape_lock = reader_landscape_active() && (lock_style == 0 || lock_style == 1 || lock_style == 2 || lock_style == 3) &&
                           (rotation == EPD_ROT_LANDSCAPE || rotation == EPD_ROT_INVERTED_LANDSCAPE);
     if (!landscape_lock) reader_rotation_leave();
+    s_pick_line = false; s_pick_armed = false; s_highlight_sel = -1;
     s_shelf_key_mode=s_shelf_key_paint_pending=false;s_shelf_key_delta=s_shelf_key_pressed=0;
     shelf_category_remember(ctx);
     s_category_menu=false;
