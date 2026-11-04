@@ -21,6 +21,7 @@ typedef struct {
     size_t count; ///< 目录条数 / Entry count
     uint32_t total; ///< 文件长度 / File length
     bool gbk; ///< GBK 编码 / GBK encoding
+    bool markdown; ///< Markdown 源（轻量清理与标题）/ Markdown source (light cleanup & headings)
     uint32_t bom; ///< BOM 字节数 / BOM size
 } book_txt_t;
 /// 建立 TXT 目录。/ Build the TXT index.

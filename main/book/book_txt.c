@@ -16,7 +16,7 @@
 #include <limits.h>
 #define READ_BLOCK (64 * 1024)
 #define PART_TARGET (48 * 1024)
-#define TXT_CACHE_VERSION 1u
+#define TXT_CACHE_VERSION 2u
 typedef struct {
     uint32_t total;
     uint32_t bom;
@@ -73,6 +73,45 @@ static esp_err_t reset(reader_t *r, book_txt_t *b, uint32_t offset) {
     clearerr(b->file);
     return fseek(b->file, (long)offset, SEEK_SET) ? ESP_FAIL : ESP_OK;
 }
+// .md/.markdown 扩展名判定（不依赖 strcasecmp）。/ Detect .md/.markdown without strcasecmp.
+static bool md_ext(const char *p) {
+    const char *e = strrchr(p, '.'); if (!e) return false; ++e;
+    char b[10]; size_t n = 0;
+    while (*e && n < sizeof(b) - 1) b[n++] = (char)tolower((unsigned char)*e++);
+    b[n] = 0;
+    return !strcmp(b, "md") || !strcmp(b, "markdown");
+}
+// Markdown 行首标题（去掉前导空白后以 # 开头）。/ Markdown ATX heading (leading # after spaces).
+static bool md_heading(const char *s) {
+    while (*s == ' ' || *s == '\t') ++s;
+    return *s == '#';
+}
+// 轻量清理：去行首 #/'>' 与内联 '*' '`'；仅 .md 生效，原地压缩，不写回文件。
+// Light cleanup: drop leading #/> and inline '*' '`'; .md only, in-place, never writes the file.
+static void md_clean(char *s, size_t *len) {
+    size_t i = 0, w = 0; bool line_start = true;
+    while (i < *len) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == '\n') { s[w++] = '\n'; ++i; line_start = true; continue; }
+        if (line_start) {
+            size_t j = i;
+            while (j < *len && (s[j] == ' ' || s[j] == '\t')) ++j;
+            if (j < *len && s[j] == '#') {
+                size_t k = j; while (k < *len && s[k] == '#') ++k;
+                if (k < *len && (s[k] == ' ' || s[k] == '\t')) {
+                    i = k; while (i < *len && (s[i] == ' ' || s[i] == '\t')) ++i; line_start = false; continue;
+                }
+            }
+            if (j < *len && s[j] == '>') {
+                i = j + 1; while (i < *len && (s[i] == ' ' || s[i] == '\t')) ++i; line_start = false; continue;
+            }
+            line_start = false;
+        }
+        if (c == '*' || c == '`') { ++i; continue; }
+        s[w++] = s[i++];
+    }
+    *len = w; s[w] = 0;
+}
 static bool heading(const char *s) {
     if (!strncmp(s, "Chapter", 7)) {
         s += 7; while (*s == ' ' || *s == '\t') ++s;
@@ -101,7 +140,7 @@ static esp_err_t index_book(reader_t *r, book_txt_t *b) {
     uint32_t start = b->bom, cp;
     while (next(r, &cp)) {
         if (cp == '\n') {
-            if (!overflow && heading(line) && !add(b, start, line)) too_many = true;
+            if (!overflow && (heading(line) || (b->markdown && md_heading(line))) && !add(b, start, line)) too_many = true;
             start = r->offset; len = 0; line[0] = 0; overflow = false;
         } else if (cp != '\r') {
             char bytes[4]; size_t n = encode(cp, bytes);
@@ -110,7 +149,7 @@ static esp_err_t index_book(reader_t *r, book_txt_t *b) {
         }
     }
     if (ferror(b->file)) return ESP_FAIL;
-    if (!overflow && heading(line) && !add(b, start, line)) too_many = true;
+    if (!overflow && (heading(line) || (b->markdown && md_heading(line))) && !add(b, start, line)) too_many = true;
     bool fallback = b->count < 2 || too_many;
     if (b->count) b->entries[0].offset = 0;
     for (size_t i = 0; i < b->count; ++i) {
@@ -170,6 +209,7 @@ static void txt_cache_save(const char* source, const book_txt_t* b) {
 
 esp_err_t book_txt_open(book_txt_t *b, const char *path) {
     b->file = fopen(path, "rb"); if (!b->file) return ESP_ERR_NOT_FOUND;
+    b->markdown = md_ext(path);
     if (fseek(b->file, 0, SEEK_END)) return ESP_FAIL;
     long size = ftell(b->file);
     if (size < 0 || (unsigned long)size > UINT32_MAX || size > LONG_MAX - 4) return ESP_ERR_INVALID_SIZE;
@@ -210,5 +250,6 @@ esp_err_t book_txt_load(book_txt_t *b, size_t i, char **utf8, size_t *len) {
     if (ferror(b->file) || r->offset != end) err = ESP_FAIL;
     free(r);
     if (err) { free(out); return err; }
+    if (b->markdown) md_clean(out, &used);
     out[used] = 0; *utf8 = out; *len = used; return ESP_OK;
 }
