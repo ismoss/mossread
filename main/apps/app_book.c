@@ -3430,8 +3430,10 @@ static void draw_reader_highlights(uint8_t* fb) {
         ui_text_box(fb, (EpdRect){item.x + 18, item.y + item.height / 2, item.width - 36, item.height / 2 - 4}, 18, snip, EPD_DRAW_ALIGN_LEFT, false);
     }
     if (s_highlight_sel >= 0) {
-        EpdRect del = {wide ? w / 2 - 120 : 312, top + 520, 240, 64};
-        ui_draw_button(fb, del, "删除所选", true);
+        EpdRect go = {wide ? w / 2 - 300 : 36, top + 520, 280, 64};
+        EpdRect del = {wide ? w / 2 + 20 : w - 36 - 280, top + 520, 280, 64};
+        ui_draw_button(fb, go, "跳转", false);
+        ui_draw_button(fb, del, "删除", true);
     }
     char page[48]; snprintf(page, sizeof(page), "‹   %d / %d   ›", s_highlight_page + 1, pages);
     reader_panel_text_vc(fb, wide ? w / 2 : 342, top + 606, 22, page, EPD_DRAW_ALIGN_CENTER, false);
@@ -6641,7 +6643,15 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 s_reader_notice_until = esp_timer_get_time() / 1000 + (ok ? 1600 : 2200);
                 s_highlight_page = 0; s_highlight_sel = -1;
             }
-        } else if (s_highlight_sel >= 0 && ui_rect_hit((EpdRect){wide ? w / 2 - 120 : 312, top + 520, 240, 64}, x, y)) {
+        } else if (s_highlight_sel >= 0 && y >= top + 520 && y < top + 584 && ui_rect_hit((EpdRect){wide ? w / 2 - 300 : 36, top + 520, 280, 64}, x, y)) {
+            // 跳转到该划线（章 + 页首字节偏移，与书签同锚点）。/ Jump to the range (chapter + page-start offset, same anchors as bookmarks).
+            uint16_t ch = 0; uint32_t st = 0, en = 0; const char* ex = "";
+            book_highlight_at(s_highlight_sel, &ch, &st, &en, &ex);
+            if (ch < book_chapter_count() && load_chapter(ctx, ch, st, false)) {
+                s_reader_panel = READER_PANEL_NONE;
+                save_progress();
+            }
+        } else if (s_highlight_sel >= 0 && y >= top + 520 && y < top + 584 && ui_rect_hit((EpdRect){wide ? w / 2 + 20 : w - 36 - 280, top + 520, 280, 64}, x, y)) {
             if (book_highlight_remove(s_highlight_sel)) {
                 copy_text(s_reader_notice, sizeof(s_reader_notice), "划线已删除");
                 s_reader_notice_until = esp_timer_get_time() / 1000 + 1600;
