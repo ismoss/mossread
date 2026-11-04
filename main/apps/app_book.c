@@ -3449,8 +3449,9 @@ static int highlight_rows(void) { return (s_highlight_sel >= 0 ? 424 : 492) / bo
 static void draw_reader_highlights(uint8_t* fb) {
     const int top = bookmarks_top(), w = reader_w();
     const bool wide = reader_panel_landscape();
-    draw_sheet(fb, top, "划线");
     int count = book_highlight_count();
+    char heading[32]; snprintf(heading, sizeof(heading), "划线 %d 条", count);
+    draw_sheet(fb, top, heading);
     int rows = highlight_rows();
     int pages = count ? (count + rows - 1) / rows : 1;
     if (s_highlight_page >= pages) s_highlight_page = pages - 1;
@@ -3489,7 +3490,9 @@ static void draw_reader_highlights(uint8_t* fb) {
         fit_text(chapter, 24, cw - 4);
         ui_text_box(fb, (EpdRect){item.x + 18, item.y + 5, cw, item.height / 2 - 8}, 24, chapter, EPD_DRAW_ALIGN_LEFT, false);
         char snip[BOOK_HIGHLIGHT_EXCERPT + 8];
-        snprintf(snip, sizeof(snip), "%s", ex && ex[0] ? ex : "（无摘录）");
+        const char* nt = book_highlight_note(newest);
+        if (nt && nt[0]) snprintf(snip, sizeof(snip), "// %s  %s", nt, ex && ex[0] ? ex : "");
+        else snprintf(snip, sizeof(snip), "%s", ex && ex[0] ? ex : "（无摘录）");
         ui_text_box(fb, (EpdRect){item.x + 18, item.y + item.height / 2, item.width - 36, item.height / 2 - 4}, 18, snip, EPD_DRAW_ALIGN_LEFT, false);
         if (tg) ui_text_box(fb, (EpdRect){item.x + item.width - 92, item.y + 5, 74, item.height / 2 - 8}, 18, hl_tags[tg < 4 ? tg : 0], EPD_DRAW_ALIGN_RIGHT, false);
     }
