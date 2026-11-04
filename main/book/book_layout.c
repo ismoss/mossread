@@ -1179,9 +1179,10 @@ void book_layout_draw_page(uint8_t* fb, size_t page, EpdRect rect, int px) {
             // 划线：该行字节范围命中高亮时，在行下画一条细下划线（不改排版/取字）。
             // Highlight: underline the line whose byte range hits a stored range (no relayout, no glyph change).
             if (s_hl_query && line_extent > 0 && s_hl_query(off, next)) {
+                // 3 像素、更深的线，保证各种刷新模式下都能看见。/ 3px darker underline for visibility across refresh modes.
                 int uy = rect.y + (int)used + line_px + 1;
-                if (uy + 2 <= rect.y + rect.height)
-                    epd_fill_rect((EpdRect){x, uy, line_extent, 2}, 0x20, fb);
+                if (uy + 3 <= rect.y + rect.height)
+                    epd_fill_rect((EpdRect){x, uy, line_extent, 3}, 0x10, fb);
             }
         }
         used += line_height;

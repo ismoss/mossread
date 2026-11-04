@@ -2192,6 +2192,7 @@ static void draw_reader_tool_icon(uint8_t* fb, int cx, int cy, int kind, bool se
         UI_ICON_BOOK_OPEN,     // 3 阅读设置 / Reading settings
         UI_ICON_TYPE,          // 4 字体设置
         UI_ICON_ROTATE_CW,     // 5 横屏切换 / Landscape toggle
+        UI_ICON_TEXT_ALIGN_START, // 6 划线 / Highlights
     };
     if (kind < 0 || kind >= (int)(sizeof(tools) / sizeof(tools[0]))) return;
     const ui_icon_t icon = (kind == 1 && selected) ? UI_ICON_BOOKMARK_CHECK : tools[kind];
@@ -3416,8 +3417,21 @@ static void draw_reader_stats_recent(uint8_t* fb) {
 // Export the current book's highlights (with tag/note) to a txt under the books dir, openable as a book.
 static void export_highlights(void) {
     int n = book_highlight_count();
+    // 导出到专用文件夹（不放进 books，避免被书架当成书；文件夹不存在则创建），文件名取书名。
+    // Export into a dedicated folder (not books/ so it isn't listed as a book; create it if missing),
+    // named after the book so different books don't overwrite each other.
+    const char* dir = "/sdcard/mossread_notes";
+    if (mkdir(dir, 0777) != 0 && errno != EEXIST) { /* 仍尝试写；写失败下面会提示 */ }
+    char base[64]; size_t bn = 0;
+    const char* src = s_book_title[0] ? s_book_title : (strrchr(s_path, '/') ? strrchr(s_path, '/') + 1 : s_path);
+    for (const char* p = src; p && *p && bn < sizeof(base) - 1; ++p) {
+        unsigned char c = (unsigned char)*p;
+        base[bn++] = (*p == '/' || *p == '\\' || *p == ':' || *p == '*' || *p == '?' ||
+                      *p == '"' || *p == '<' || *p == '>' || *p == '|' || c < 0x20) ? '_' : *p;
+    }
+    base[bn] = 0; if (!base[0]) snprintf(base, sizeof(base), "highlights");
     char path[288];
-    if (snprintf(path, sizeof(path), "%s/highlights.md", app_settings_books_dir()) >= (int)sizeof(path)) {
+    if (snprintf(path, sizeof(path), "%s/%s.md", dir, base) >= (int)sizeof(path)) {
         copy_text(s_reader_notice, sizeof(s_reader_notice), "路径过长"); s_reader_notice_until = esp_timer_get_time() / 1000 + 1800; return;
     }
     FILE* f = fopen(path, "w");
@@ -3443,7 +3457,7 @@ static void export_highlights(void) {
         fprintf(f, "\n");
     }
     fclose(f);
-    snprintf(s_reader_notice, sizeof(s_reader_notice), "已导出 %d 条到 books/highlights.md", n);
+    snprintf(s_reader_notice, sizeof(s_reader_notice), "已导出 %d 条到 mossread_notes", n);
     s_reader_notice_until = esp_timer_get_time() / 1000 + 2200;
 }
 static bool hl_match(int i) { return s_highlight_filter == 0 || (int)(book_highlight_tag(i) & 3) == s_highlight_filter; }
@@ -3456,23 +3470,26 @@ static void draw_reader_highlights(uint8_t* fb) {
     const bool wide = reader_panel_landscape();
     int count = hl_match_count();
     char heading[32]; snprintf(heading, sizeof(heading), "划线 %d 条", count);
-    draw_sheet(fb, top, heading);
+    // 用空标题，自绘左侧小标题；避免 draw_sheet 居中大标题与右上按钮重叠（曾出现“半个字”）。
+    // Empty sheet title; draw a small left title to avoid overlap with the top-right buttons.
+    draw_sheet(fb, top, "");
+    ui_text(fb, 36, top + 34, 22, heading, EPD_DRAW_ALIGN_LEFT, false);
     int rows = highlight_rows();
     int pages = count ? (count + rows - 1) / rows : 1;
     if (s_highlight_page >= pages) s_highlight_page = pages - 1;
     if (s_highlight_page < 0) s_highlight_page = 0;
-    EpdRect add = {wide ? w - 150 : 522, top + 30, 126, 54};
-    ui_fill_round_rect(fb, add, 20, 0xe8);
-    ui_draw_control_frame(fb, add, 20, 0x78);
-    reader_panel_text_vc(fb, add.x + add.width / 2, top + 57, 20, "记本页", EPD_DRAW_ALIGN_CENTER, false);
-    EpdRect addline = {wide ? w - 288 : 384, top + 30, 122, 54};
-    ui_fill_round_rect(fb, addline, 20, 0xe8);
-    ui_draw_control_frame(fb, addline, 20, 0x78);
-    reader_panel_text_vc(fb, addline.x + addline.width / 2, top + 57, 20, "选段", EPD_DRAW_ALIGN_CENTER, false);
-    EpdRect exp = {wide ? w - 420 : 250, top + 30, 122, 54};
-    ui_fill_round_rect(fb, exp, 20, 0xe8);
-    ui_draw_control_frame(fb, exp, 20, 0x78);
-    reader_panel_text_vc(fb, exp.x + exp.width / 2, top + 57, 20, "导出", EPD_DRAW_ALIGN_CENTER, false);
+    {
+        const int bw = 146, gap = 6;
+        EpdRect b_exp  = {w - 176 - 2 * bw - 2 * gap, top + 26, bw, 50};
+        EpdRect b_span = {w - 176 - bw - gap, top + 26, bw, 50};
+        EpdRect b_page = {w - 176, top + 26, bw, 50};
+        ui_fill_round_rect(fb, b_exp, 18, 0xe8); ui_draw_control_frame(fb, b_exp, 18, 0x78);
+        reader_panel_text_vc(fb, b_exp.x + bw / 2, top + 51, 20, "导出", EPD_DRAW_ALIGN_CENTER, false);
+        ui_fill_round_rect(fb, b_span, 18, 0xe8); ui_draw_control_frame(fb, b_span, 18, 0x78);
+        reader_panel_text_vc(fb, b_span.x + bw / 2, top + 51, 20, "选段", EPD_DRAW_ALIGN_CENTER, false);
+        ui_fill_round_rect(fb, b_page, 18, 0xe8); ui_draw_control_frame(fb, b_page, 18, 0x78);
+        reader_panel_text_vc(fb, b_page.x + bw / 2, top + 51, 20, "记本页", EPD_DRAW_ALIGN_CENTER, false);
+    }
     {
         EpdRect flt = {36, top + 590, wide ? 200 : 180, 56};
         ui_fill_round_rect(fb, flt, 18, 0xe8);
@@ -3510,10 +3527,9 @@ static void draw_reader_highlights(uint8_t* fb) {
     }
     if (s_highlight_sel >= 0) {
         int bw = wide ? 148 : 146, gap = 8, total = 4 * bw + 3 * gap, x0 = wide ? (w - total) / 2 : 36;
-        char tl[24]; snprintf(tl, sizeof(tl), "标签·%s", hl_tags[book_highlight_tag(s_highlight_sel) & 3]);
         ui_draw_button(fb, (EpdRect){x0, top + 520, bw, 64}, "跳转", false);
         ui_draw_button(fb, (EpdRect){x0 + (bw + gap), top + 520, bw, 64}, "笔记", false);
-        ui_draw_button(fb, (EpdRect){x0 + 2 * (bw + gap), top + 520, bw, 64}, tl, false);
+        ui_draw_button(fb, (EpdRect){x0 + 2 * (bw + gap), top + 520, bw, 64}, "标签", false);
         ui_draw_button(fb, (EpdRect){x0 + 3 * (bw + gap), top + 520, bw, 64}, "删除", true);
     }
     char page[48]; snprintf(page, sizeof(page), "‹   %d / %d   ›", s_highlight_page + 1, pages);
@@ -6678,6 +6694,7 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 s_reader_panel = READER_PANEL_HIGHLIGHTS;
                 book_highlight_load(s_path);
                 s_highlight_page = 0; s_highlight_sel = -1; s_highlight_filter = 0;
+                invalidate_prep(); // 预取帧可能无下划线，开面板即作废 / drop prefetch that may lack underlines
             } else if (i == BOOK_TOOL_LANDSCAPE) {
                 // 自适应开：这一键在"锁定/取消锁定"间切换；关：三档循环。
                 // Adaptive on: toggle lock; off: cycle the three manual stops.
@@ -6712,9 +6729,9 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
         int count = hl_match_count();
         int rows = highlight_rows();
         int pages = count ? (count + rows - 1) / rows : 1;
-        if (y < top) { s_reader_panel = READER_PANEL_NONE; book_highlight_unload(); }
+        if (y < top) { s_reader_panel = READER_PANEL_NONE; book_highlight_unload(); invalidate_prep(); }
         else if (y < top + 86) {
-            if (x >= (wide ? w - 150 : 522)) {
+            if (ui_rect_hit((EpdRect){w - 176, top + 26, 146, 50}, x, y)) {
                 size_t st = book_layout_page_start_offset(s_page);
                 size_t en = book_layout_page_start_offset(s_page + 1);
                 if (en <= st || en > s_text_len) en = s_text_len;
@@ -6725,12 +6742,12 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
                 copy_text(s_reader_notice, sizeof(s_reader_notice), ok ? "已记划线" : "划线保存失败");
                 s_reader_notice_until = esp_timer_get_time() / 1000 + (ok ? 1600 : 2200);
                 s_highlight_page = 0; s_highlight_sel = -1;
-            } else if (x >= (wide ? w - 288 : 384)) {
+            } else if (ui_rect_hit((EpdRect){w - 176 - 146 - 6, top + 26, 146, 50}, x, y)) {
                 s_pick_line = true; s_pick_armed = false; s_pick_start = s_pick_end = 0;
                 s_reader_panel = READER_PANEL_NONE;
                 copy_text(s_reader_notice, sizeof(s_reader_notice), "点开始的一行");
                 s_reader_notice_until = esp_timer_get_time() / 1000 + 2500;
-            } else if (x >= (wide ? w - 420 : 250)) {
+            } else if (ui_rect_hit((EpdRect){w - 176 - 2 * 146 - 2 * 6, top + 26, 146, 50}, x, y)) {
                 export_highlights();
             }
         } else if (s_highlight_sel >= 0 && y >= top + 520 && y < top + 584) {
