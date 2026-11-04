@@ -4890,6 +4890,10 @@ static void skip_hidden_image_pages(app_ctx_t *ctx, int direction) {
         } else break;
     }
 }
+static bool reader_highlight_line(size_t start, size_t end) {
+    if (s_view != READING || !s_text) return false;
+    return book_highlight_overlaps((uint16_t)s_chapter, (uint32_t)start, (uint32_t)end);
+}
 static bool open_book_impl(app_ctx_t* ctx, const char* path) {
     if (!book_file_path_supported(path)) {
         copy_text(s_message, sizeof(s_message), "此版本仅支持 TXT 和 EPUB 书籍");
@@ -4987,6 +4991,7 @@ static bool open_book_impl(app_ctx_t* ctx, const char* path) {
     }
     copy_text(s_path, sizeof(s_path), path);
     book_highlight_load(s_path);
+    book_layout_set_highlight_query(reader_highlight_line);
     s_reader_favorite = favorite_load(path);
     const char* filename = strrchr(path, '/');
     filename = filename ? filename + 1 : path;

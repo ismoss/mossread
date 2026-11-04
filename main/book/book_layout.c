@@ -35,6 +35,7 @@ static int s_first_line_indent_adjust_px;
 static unsigned s_reading_line;
 static int s_reading_line_offset;
 static bool s_images_visible = true;
+static book_layout_highlight_fn s_hl_query;
 // 竖排：同一套折行与禁则逻辑，只是推进方向朝下、堆叠方向朝左。
 // Vertical setting: the same wrapping and kinsoku logic, with the advance running down and the
 // stack running leftward.
@@ -983,6 +984,8 @@ static void draw_vertical_page(uint8_t* fb, size_t page, EpdRect rect) {
     }
 }
 
+void book_layout_set_highlight_query(book_layout_highlight_fn fn) { s_hl_query = fn; }
+
 void book_layout_draw_page(uint8_t* fb, size_t page, EpdRect rect, int px) {
     if (!fb || page >= s_count || px != s_px || rect.width != s_rect.width ||
         rect.height != s_rect.height || rect.x < 0 || rect.y < 0 ||
@@ -1087,6 +1090,13 @@ void book_layout_draw_page(uint8_t* fb, size_t page, EpdRect rect, int px) {
             // face.
             ttf_draw_set_runs(NULL, 0);
             ttf_font_select(TTF_FONT_SLOT_SYSTEM);
+            // 划线：该行字节范围命中高亮时，在行下画一条细下划线（不改排版/取字）。
+            // Highlight: underline the line whose byte range hits a stored range (no relayout, no glyph change).
+            if (s_hl_query && line_extent > 0 && s_hl_query(off, next)) {
+                int uy = rect.y + (int)used + line_px + 1;
+                if (uy + 2 <= rect.y + rect.height)
+                    epd_fill_rect((EpdRect){x, uy, line_extent, 2}, 0x20, fb);
+            }
         }
         used += line_height;
         if (paragraph_end) used += gap_for(line_height, heading) + margin_after;

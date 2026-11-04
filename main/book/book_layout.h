@@ -99,6 +99,13 @@ size_t book_layout_page_for_offset(size_t off);
 /// 返回页首原文字节偏移；越界页返回文本长度。/ Return source byte offset at page start; invalid pages return text length.
 size_t book_layout_page_start_offset(size_t page);
 
+/// 划线查询：绘制每行正文时，对行字节范围 [start,end) 返回 true 则在该行下画下划线；NULL 取消。
+/// 不改变排版或字形，只叠加显示。水平排版生效；竖排暂不画。
+/// Highlight query: return true for a line's [start,end) to underline it; NULL clears.
+/// Adds display only (no relayout/glyph change); applies to horizontal layout (vertical skips it).
+typedef bool (*book_layout_highlight_fn)(size_t start, size_t end);
+void book_layout_set_highlight_query(book_layout_highlight_fn fn);
+
 /// 空闲预绘游标；不持有正文或字体指针，布局代次变化立即失效。
 /// Idle drawing cursor: borrows no text/font pointers and expires on layout generation changes.
 typedef struct {
