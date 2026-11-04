@@ -1018,6 +1018,60 @@ bool book_layout_page_line_at(size_t page, int x, int y, size_t *start, size_t *
     return false;
 }
 
+static size_t caret_cp_count(const char *s, size_t bytes) {
+    size_t i = 0, n = 0;
+    while (i < bytes) { unsigned char c = (unsigned char)s[i]; i += (c < 0x80) ? 1 : ((c >> 5) == 0x6 ? 2 : ((c >> 4) == 0xE ? 3 : 4)); ++n; }
+    return n;
+}
+static size_t caret_cp_bytes(const char *s, size_t bytes, size_t k) {
+    size_t i = 0, n = 0;
+    while (i < bytes && n < k) { unsigned char c = (unsigned char)s[i]; i += (c < 0x80) ? 1 : ((c >> 5) == 0x6 ? 2 : ((c >> 4) == 0xE ? 3 : 4)); ++n; }
+    return i;
+}
+bool book_layout_page_caret_at(size_t page, int x, int y, size_t *caret) {
+    if (!s_text || s_vertical || page >= s_count || !caret) return false;
+    size_t off = s_pages[page];
+    size_t e = page + 1 < s_count ? s_pages[page + 1] : s_len;
+    int64_t used = page == 0 ? s_lead_height : 0;
+    while (off < e) {
+        size_t visible = skip_image_spacing(off);
+        if (visible != off) { off = visible; continue; }
+        const blk_t* image_block = block_at(off);
+        if (image_block && image_block->image >= 0 && off == image_block->offset) {
+            off = image_block->offset + image_block->len;
+            if (off < e && s_text[off] == '\n') ++off;
+            continue;
+        }
+        size_t next; bool paragraph_end, heading;
+        int line_px, line_width, indent, margin_before, margin_after; uint8_t align;
+        if (!take_line(off, s_rect.width, s_rect.x, &next, &paragraph_end, &line_px, &heading,
+                       &line_width, &indent, &align, &margin_before, &margin_after)) return false;
+        int line_height = line_height_for(line_px);
+        int leading = used ? margin_before : 0;
+        if (used + leading + line_height > s_rect.height) return false;
+        used += leading;
+        int line_top = s_rect.y + (int)used;
+        if (s_line[0] && y >= line_top && y < line_top + line_height) {
+            int x0 = s_rect.x + indent, available = s_rect.width - indent;
+            if (align == 1) x0 += (available - line_width) / 2;
+            else if (align == 2) x0 += available - line_width;
+            int width = line_width > 0 ? line_width : available;
+            if (width <= 0) width = 1;
+            int rel = x - x0; if (rel < 0) rel = 0; if (rel > width) rel = width;
+            size_t linelen = strlen(s_line);
+            size_t cnt = caret_cp_count(s_line, linelen);
+            size_t k = (size_t)(((long long)rel * (long long)cnt + width / 2) / width);
+            if (k > cnt) k = cnt;
+            *caret = off + caret_cp_bytes(s_line, linelen, k);
+            return true;
+        }
+        used += line_height;
+        if (paragraph_end) used += gap_for(line_height, heading) + margin_after;
+        off = next;
+    }
+    return false;
+}
+
 void book_layout_draw_page(uint8_t* fb, size_t page, EpdRect rect, int px) {
     if (!fb || page >= s_count || px != s_px || rect.width != s_rect.width ||
         rect.height != s_rect.height || rect.x < 0 || rect.y < 0 ||

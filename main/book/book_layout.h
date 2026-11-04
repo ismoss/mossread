@@ -110,6 +110,11 @@ void book_layout_set_highlight_query(book_layout_highlight_fn fn);
 /// Line at a point: given a point on the current page (same coords as draw_page), return that
 /// line's source byte range [start,end); false when outside a text line or in vertical layout.
 bool book_layout_page_line_at(size_t page, int x, int y, size_t *start, size_t *end);
+/// 按点取字位：给页内一点，返回该点最近字符边界的原文字节偏移（近似按字符均宽映射）；
+/// 竖排或无文字返回 false。供"选段精确到字"用，只读不改排版。
+/// Caret at a point: nearest character boundary's source byte offset (approx. by uniform char width);
+/// false in vertical layout or on no text. Read-only; used for char-precise span selection.
+bool book_layout_page_caret_at(size_t page, int x, int y, size_t *caret);
 
 /// 空闲预绘游标；不持有正文或字体指针，布局代次变化立即失效。
 /// Idle drawing cursor: borrows no text/font pointers and expires on layout generation changes.

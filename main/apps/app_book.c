@@ -7458,17 +7458,23 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     if (s_view == READING) {
         if (s_pick_line) {
-            size_t ls = 0, le = 0;
-            if (ui_rect_hit(body_rect(), x, y) && book_layout_page_line_at(s_page, x, y, &ls, &le)) {
+            size_t caret = 0;
+            if (ui_rect_hit(body_rect(), x, y) && book_layout_page_caret_at(s_page, x, y, &caret)) {
                 if (!s_pick_armed) {
-                    // 第一次点：记下起点行，等终点行。/ First tap: remember the start line, await the end line.
-                    s_pick_start = ls; s_pick_end = le; s_pick_armed = true;
-                    copy_text(s_reader_notice, sizeof(s_reader_notice), "再点结束的一行");
+                    // 第一次点：记下起点字位，等结尾。/ First tap: remember the start caret, await the end.
+                    s_pick_start = caret; s_pick_end = caret; s_pick_armed = true;
+                    copy_text(s_reader_notice, sizeof(s_reader_notice), "再点范围的结尾");
                     s_reader_notice_until = esp_timer_get_time() / 1000 + 2500;
                 } else {
-                    // 第二次点：合并成跨行区间并记一条划线。/ Second tap: merge into a cross-line span and add one highlight.
-                    size_t lo = s_pick_start < ls ? s_pick_start : ls;
-                    size_t hi = s_pick_end > le ? s_pick_end : le;
+                    // 第二次点：取两端字位间的区间（可跨行）记一条划线；同点则往后取一个字。
+                    // Second tap: highlight the char span between the two carets (may span lines); same point extends one char.
+                    size_t lo = s_pick_start < caret ? s_pick_start : caret;
+                    size_t hi = s_pick_start < caret ? caret : s_pick_start;
+                    if (hi <= lo && s_text && lo < s_text_len) {
+                        unsigned char c = (unsigned char)s_text[lo];
+                        size_t adv = (c < 0x80) ? 1 : ((c >> 5) == 0x6 ? 2 : ((c >> 4) == 0xE ? 3 : 4));
+                        hi = lo + adv; if (hi > s_text_len) hi = s_text_len;
+                    }
                     char exc[BOOK_HIGHLIGHT_EXCERPT]; size_t n = 0;
                     if (s_text) for (size_t i = lo; i < s_text_len && i < hi && n + 1 < sizeof(exc); ++i) exc[n++] = s_text[i];
                     exc[n] = 0;
