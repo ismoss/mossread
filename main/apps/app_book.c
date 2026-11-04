@@ -3416,26 +3416,33 @@ static void draw_reader_stats_recent(uint8_t* fb) {
 static void export_highlights(void) {
     int n = book_highlight_count();
     char path[288];
-    if (snprintf(path, sizeof(path), "%s/highlights.txt", app_settings_books_dir()) >= (int)sizeof(path)) {
+    if (snprintf(path, sizeof(path), "%s/highlights.md", app_settings_books_dir()) >= (int)sizeof(path)) {
         copy_text(s_reader_notice, sizeof(s_reader_notice), "路径过长"); s_reader_notice_until = esp_timer_get_time() / 1000 + 1800; return;
     }
     FILE* f = fopen(path, "w");
     if (!f) { copy_text(s_reader_notice, sizeof(s_reader_notice), "导出失败"); s_reader_notice_until = esp_timer_get_time() / 1000 + 2200; return; }
-    fprintf(f, "%s\n\n", s_book_title[0] ? s_book_title : s_path);
+    // YAML front matter（Obsidian/PageIsle 风格），正文按章分组；导出为 .md，可在本机阅读器直接打开。
+    // YAML front matter (Obsidian/PageIsle style), grouped by chapter; saved as .md so the local reader opens it.
+    fprintf(f, "---\nbook: %s\ncount: %d\n---\n", s_book_title[0] ? s_book_title : s_path, n);
+    int prev = -1;
     for (int i = 0; i < n; ++i) {
         uint16_t ch = 0; uint32_t st = 0, en = 0; const char* ex = "";
         book_highlight_at(i, &ch, &st, &en, &ex);
-        char title[96];
-        if (book_chapter_title(ch, title, sizeof(title)) != ESP_OK) snprintf(title, sizeof(title), "第%u章", (unsigned)ch + 1);
+        if ((int)ch != prev) {
+            char title[96];
+            if (book_chapter_title(ch, title, sizeof(title)) != ESP_OK) snprintf(title, sizeof(title), "第%u章", (unsigned)ch + 1);
+            fprintf(f, "\n## %s\n\n", title);
+            prev = (int)ch;
+        }
         uint8_t tg = book_highlight_tag(i);
         const char* note = book_highlight_note(i);
-        fprintf(f, "- [%s] %s", title, ex && ex[0] ? ex : "（无摘录）");
+        fprintf(f, "- %s", ex && ex[0] ? ex : "（无摘录）");
         if (tg) fprintf(f, "  #%s", hl_tags[tg & 3]);
         if (note && note[0]) fprintf(f, "  // %s", note);
         fprintf(f, "\n");
     }
     fclose(f);
-    snprintf(s_reader_notice, sizeof(s_reader_notice), "已导出 %d 条到 books/highlights.txt", n);
+    snprintf(s_reader_notice, sizeof(s_reader_notice), "已导出 %d 条到 books/highlights.md", n);
     s_reader_notice_until = esp_timer_get_time() / 1000 + 2200;
 }
 static int highlight_rows(void) { return (s_highlight_sel >= 0 ? 424 : 492) / bookmark_row_step(); }
