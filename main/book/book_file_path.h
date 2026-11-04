@@ -15,5 +15,6 @@ static inline bool book_file_path_supported(const char *path) {
     const char *name = strrchr(path, '/');
     name = name ? name + 1 : path;
     const char *ext = strrchr(name, '.');
-    return ext && (!strcasecmp(ext, ".txt") || !strcasecmp(ext, ".epub"));
+    return ext && (!strcasecmp(ext, ".txt") || !strcasecmp(ext, ".epub") ||
+                   !strcasecmp(ext, ".md") || !strcasecmp(ext, ".markdown"));
 }

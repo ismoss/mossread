@@ -200,12 +200,12 @@ static bool file_pager_event(app_ctx_t *ctx,const ui_gesture_event_t *ev,app_red
     return true;
 }
 static EpdRect home_transfer_rect(int index) {
-    return (EpdRect){36 + index * 208, 346, 196, 100};
+    return (EpdRect){36 + index * 208, 332, 196, 96};
 }
 
 // 存储卡卡片的位置，绘制与命中测试共用一份，免得两处各写一个坐标。
 // The storage card's rect, shared by drawing and hit testing so the two cannot drift apart.
-static EpdRect storage_card_rect(void) { return (EpdRect){36, 171, 612, 112}; }
+static EpdRect storage_card_rect(void) { return (EpdRect){36, 171, 612, 120}; }
 
 // 需要格式化：卡在、没挂上、而且不是超时。超时是接触或供电问题，格式化解决不了，那种情况下
 // 说"格式化可能可以解决"会把用户带偏。
@@ -509,10 +509,11 @@ static int compare_files(const void *left, const void *right) {
 // 排序切换按钮：文件页表头右侧摘要行（y≈172，行区从 214 起，不冲突）。
 // Sort toggle: the header summary line (y≈172); list rows start at 214, so no overlap.
 static EpdRect files_sort_rect(void) { return (EpdRect){360, 156, 288, 36}; }
-static EpdRect files_grid_rect(void) { return (EpdRect){546, 86, 50, 44}; }
-static EpdRect files_multi_rect(void) { return (EpdRect){496, 86, 50, 44}; }
-static EpdRect files_selectall_rect(void) { return (EpdRect){546, 86, 50, 44}; }
-static EpdRect files_batchdel_rect(void) { return (EpdRect){598, 86, 50, 44}; }
+static EpdRect files_grid_rect(void) { return (EpdRect){508, 86, 74, 44}; }
+static EpdRect files_multi_rect(void) { return (EpdRect){430, 86, 74, 44}; }
+static EpdRect files_selectall_rect(void) { return (EpdRect){508, 86, 74, 44}; }
+static EpdRect files_batchdel_rect(void) { return (EpdRect){586, 86, 74, 44}; }
+static EpdRect files_search_entry_rect(void); // 定义在递归搜索区，渲染在更早处需前置声明。/ Defined later; forward-declared for early render use.
 
 static void scan_folder(int folder) {
     if (!files_alloc()) return;
@@ -728,15 +729,16 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         ui_text_vc(fb, 342, 107, 34, s_view == FILE_VIEW_MOVE ? "选择目标文件夹" : names[s_folder], EPD_DRAW_ALIGN_CENTER, false);
         // 搜索入口（仅普通文件夹列表，非移动目标选择）。/ Search entry (folder list only, not move-target).
         if (s_view == FILE_VIEW_LIST && !s_query[0]) {
+            EpdRect r_multi = files_multi_rect(), r_mid = files_grid_rect(), r_right = files_search_entry_rect();
             if (s_select_mode) {
-                ui_text(fb, 500, 95, 22, "取消", EPD_DRAW_ALIGN_LEFT, false);
-                ui_text(fb, 550, 95, 22, "全选", EPD_DRAW_ALIGN_LEFT, false);
+                ui_text_vc(fb, r_multi.x + r_multi.width / 2, 107, 22, "取消", EPD_DRAW_ALIGN_CENTER, false);
+                ui_text_vc(fb, r_mid.x + r_mid.width / 2, 107, 22, "全选", EPD_DRAW_ALIGN_CENTER, false);
                 char del[20]; snprintf(del, sizeof(del), "删%u", (unsigned)selected_count());
-                ui_text_vc(fb, 646, 107, 22, del, EPD_DRAW_ALIGN_RIGHT, false);
+                ui_text_vc(fb, r_right.x + r_right.width / 2, 107, 22, del, EPD_DRAW_ALIGN_CENTER, false);
             } else {
-                ui_text(fb, 500, 95, 22, "多选", EPD_DRAW_ALIGN_LEFT, false);
-                ui_text(fb, 550, 95, 22, s_file_grid ? "列表" : "网格", EPD_DRAW_ALIGN_LEFT, false);
-                ui_text_vc(fb, 646, 107, 24, "搜索", EPD_DRAW_ALIGN_RIGHT, false);
+                ui_text_vc(fb, r_multi.x + r_multi.width / 2, 107, 22, "多选", EPD_DRAW_ALIGN_CENTER, false);
+                ui_text_vc(fb, r_mid.x + r_mid.width / 2, 107, 22, s_file_grid ? "列表" : "网格", EPD_DRAW_ALIGN_CENTER, false);
+                ui_text_vc(fb, r_right.x + r_right.width / 2, 107, 22, "搜索", EPD_DRAW_ALIGN_CENTER, false);
             }
         }
         if (s_select_mode) {
@@ -801,7 +803,7 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         EpdRect storage = storage_card_rect();
         ui_fill_round_rect(fb, storage, 24, UI_GRAY_WHITE);
         file_card_border(fb, storage, 24);
-        ui_text(fb, 58, 188, 27, "存储卡", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 58, 186, 27, "存储卡", EPD_DRAW_ALIGN_LEFT, false);
         char total[32], usage[80];
         if (s_sd.mounted) {
             storage_usage(&s_sd,total,sizeof(total),usage,sizeof(usage));
@@ -815,22 +817,22 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
             snprintf(total, sizeof(total), "未挂载");
             snprintf(usage, sizeof(usage), "请检查 TF 卡");
         }
-        ui_text(fb, 624, 191, 21, total, EPD_DRAW_ALIGN_RIGHT, false);
-        ui_text(fb, 58, 231, 19, usage, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 624, 189, 21, total, EPD_DRAW_ALIGN_RIGHT, false);
+        ui_text(fb, 58, 227, 19, usage, EPD_DRAW_ALIGN_LEFT, false);
         {
             char bstat[64];
             if (!s_book_stat_done) snprintf(bstat, sizeof(bstat), "书籍统计…");
             else if (s_book_stat_count) { char amt[16]; storage_amount(amt, sizeof(amt), s_book_stat_bytes); snprintf(bstat, sizeof(bstat), "书籍 %u 本 · %s", s_book_stat_count, amt); }
             else snprintf(bstat, sizeof(bstat), "书籍 0 本");
-            ui_text(fb, 58, 282, 20, bstat, EPD_DRAW_ALIGN_LEFT, false);
+            ui_text(fb, 58, 266, 20, bstat, EPD_DRAW_ALIGN_LEFT, false);
         }
-        EpdRect capacity = {58, 263, 566, 6};
+        EpdRect capacity = {58, 252, 566, 6};
         ui_fill_round_rect(fb, capacity, 3, 0xa0);
         if (storage_space_valid(&s_sd)) {
             capacity.width = (int)((s_sd.filesystem_bytes - s_sd.free_bytes) * 566 / s_sd.filesystem_bytes);
             if (capacity.width > 0) ui_fill_round_rect(fb, capacity, 3, 0x68);
         }
-        ui_text(fb, 42, 308, 21, "传输文件", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 42, 303, 21, "传输文件", EPD_DRAW_ALIGN_LEFT, false);
         static const char *const methods[] = {"WiFi传输", "热点传输", "USB传输"};
         static const char *const details[] = {"同一网络", "连接设备热点", "连接电脑"};
         for (int i = 0; i < 3; ++i) {
@@ -843,7 +845,7 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
                        EPD_DRAW_ALIGN_CENTER, false);
         }
         char summary[48]; snprintf(summary, sizeof(summary), "根目录 · %d 项", s_count);
-        ui_text(fb, 36, 482, 21, summary, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 36, 456, 21, summary, EPD_DRAW_ALIGN_LEFT, false);
         ui_fill_round_rect(fb, (EpdRect){537, 458, 111, 50}, 23, UI_GRAY_WHITE);
         ui_draw_control_frame(fb, (EpdRect){537, 458, 111, 50}, 23, 0x70);
         ui_text_vc(fb, 592, 483, 19, "名称 ↑", EPD_DRAW_ALIGN_CENTER, false);
@@ -1143,7 +1145,7 @@ static app_redraw_t rename_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev)
 
 /* ---- 递归搜索 / Recursive search ---- */
 // 搜索入口按钮（文件页标题行右侧）。/ Search entry button (folder title row, right side).
-static EpdRect files_search_entry_rect(void) { return (EpdRect){598, 86, 50, 44}; }
+static EpdRect files_search_entry_rect(void) { return (EpdRect){586, 86, 74, 44}; }
 static void search_close(void) { if (s_fs) { file_search_close(s_fs); s_fs = NULL; } }
 static void search_found_cb(const char *path, const struct stat *info, void *ctx) {
     (void)ctx;
@@ -1266,7 +1268,14 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
     int tab = files_nav_hit(ev->x0, ev->y0);
     if (!long_press && tab >= 0) { ui_nav_request(ctx, tab); return APP_REDRAW_NONE; }
     if (s_folder >= 0) {
-        if (!long_press && ev->y0 < 185) {
+        // 表头控件（多选/网格/搜索/排序）在 y<185 区，必须先于“返回上一级”判定，否则会被当成返回。
+        // Header controls sit in y<185; they must be tested before the "go up" branch or they'd act as Back.
+        bool hdr_hit = ui_rect_hit(files_multi_rect(), ev->x0, ev->y0) ||
+                       ui_rect_hit(files_grid_rect(), ev->x0, ev->y0) ||
+                       ui_rect_hit(files_search_entry_rect(), ev->x0, ev->y0) ||
+                       ui_rect_hit(files_sort_rect(), ev->x0, ev->y0) ||
+                       (s_query[0] && ev->y0 >= 154 && ev->y0 < 196);
+        if (!long_press && !hdr_hit && ev->y0 < 185) {
             if (s_folder == 3 && strcmp(s_dir, "/sdcard")) {
                 char *slash = strrchr(s_dir, '/'); if (slash) *slash = 0;
                 scan_folder(3);

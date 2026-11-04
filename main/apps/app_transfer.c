@@ -895,7 +895,7 @@ static void draw_status(uint8_t* fb) {
     else if (s_status.state == READ_PICO_TRANSFER_READY) state = "等待上传";
     else if (s_status.state == READ_PICO_TRANSFER_UPLOADING) state = "正在接收";
     else if (s_status.state == READ_PICO_TRANSFER_ERROR) state = s_status.network_ready ? "上传失败，请重试" :
-        s_mode == READ_PICO_TRANSFER_MODE_AP ? "热点传输未启动" : "WiFi 传书未启动";
+        s_mode == READ_PICO_TRANSFER_MODE_AP ? "热点传输未启动" : "WiFi 传输未启动";
     if (s_media_lost) state = "存储已移除，传书已停止";
     ui_text(fb, area.x + 28, area.y + 24, 26, state, EPD_DRAW_ALIGN_LEFT, false);
     char line[256];
@@ -973,7 +973,7 @@ static void render_content(app_ctx_t* ctx, uint8_t* fb) {
         ui_text(fb, 42, 450, 20, "文件存放位置", EPD_DRAW_ALIGN_LEFT, false);
         ui_fill_round_rect(fb, (EpdRect){36, 478, 612, 206}, 24, UI_GRAY_WHITE);
         ui_text(fb, 64, 510, 27, "books", EPD_DRAW_ALIGN_LEFT, false);
-        ui_text(fb, 64, 553, 19, "EPUB、TXT 书籍", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, 64, 553, 19, "EPUB、TXT、MD 书籍", EPD_DRAW_ALIGN_LEFT, false);
         ui_hairline(fb, 580, 64, 556, 0xb0);
         ui_text(fb, 64, 597, 27, "fonts", EPD_DRAW_ALIGN_LEFT, false);
         ui_text(fb, 64, 640, 19, "TTF、OTF 字体", EPD_DRAW_ALIGN_LEFT, false);
@@ -991,7 +991,7 @@ static void render_content(app_ctx_t* ctx, uint8_t* fb) {
     if (s_view == TRANSFER_NETWORKS) { draw_networks(fb); return; }
     if (s_view == TRANSFER_PASSWORD) { draw_password(fb); return; }
     ui_clear_page(fb);
-    transfer_header(fb, s_mode == READ_PICO_TRANSFER_MODE_AP ? "热点传输" : "WiFi 传书", NULL);
+    transfer_header(fb, s_mode == READ_PICO_TRANSFER_MODE_AP ? "热点传输" : "WiFi 传输", NULL);
     EpdRect connection = {36, 168, 612, 132};
     ui_fill_round_rect(fb, connection, 24, UI_GRAY_WHITE);
     ui_draw_round_rect(fb, connection, 24, 0x98);
