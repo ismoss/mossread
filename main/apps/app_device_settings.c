@@ -1261,20 +1261,21 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
     if (s_page == SETTINGS_LOCK_STYLE) {
         back_header(fb, "锁屏样式");
         section(fb, 248, "选择电源键锁屏后的画面");
-        // 五档样式压缩为一列卡片；关闭档放首位，选中后锁屏只清屏息屏。
-        // Five styles share one card column; the off entry leads, and locking with it only blanks the panel.
-        const char *labels[] = {"关闭锁屏", "壁纸锁屏", "阅读票根", "书架拼贴", "透明 PNG 书封"};
+        // 六档样式压缩为一列卡片；关闭档放首位，选中后锁屏只清屏息屏。
+        // Six styles share one card column; the off entry leads, and locking with it only blanks the panel.
+        const char *labels[] = {"关闭锁屏", "壁纸锁屏", "阅读票根", "书架拼贴", "透明 PNG 书封", "极简时钟"};
         const char *details[] = {"不显示锁屏画面 · 短按电源键唤醒",
                                  "使用 TF 卡中的 JPG / PNG 图片", "书封、进度和阅读记录",
-                                 "真实封面 · 名称与数量 · 系统字体", "当前页面作底 · 白底 PNG 自动去白"};
-        const uint8_t values[] = {4, 1, 0, 2, 3};
-        for (int i = 0; i < 5; ++i) {
-            EpdRect box = {36, 300 + i * 128, 612, 110};
+                                 "真实封面 · 名称与数量 · 系统字体", "当前页面作底 · 白底 PNG 自动去白",
+                                 "大号时间与日期 · 随当前横竖屏"};
+        const uint8_t values[] = {4, 1, 0, 2, 3, 5};
+        for (int i = 0; i < 6; ++i) {
+            EpdRect box = {36, 300 + i * 104, 612, 92};
             bool active = app_settings_lock_style() == values[i];
             settings_card(fb, box, 18, active ? 0xd0 : UI_GRAY_WHITE, 0x70);
-            ui_text(fb, 64, box.y + 24, 28, labels[i], EPD_DRAW_ALIGN_LEFT, false);
-            ui_text(fb, 64, box.y + 74, 19, details[i], EPD_DRAW_ALIGN_LEFT, false);
-            if (active) epd_fill_circle(609, box.y + 55, 8, UI_GRAY_BLACK, fb);
+            ui_text(fb, 64, box.y + 18, 26, labels[i], EPD_DRAW_ALIGN_LEFT, false);
+            ui_text(fb, 64, box.y + 56, 18, details[i], EPD_DRAW_ALIGN_LEFT, false);
+            if (active) epd_fill_circle(609, box.y + 46, 8, UI_GRAY_BLACK, fb);
         }
         ui_text(fb,54,954,21,"透明书封放入 pictures · 推荐 684 × 1216",EPD_DRAW_ALIGN_LEFT,false);
         if (app_settings_wallpaper_path()[0])
@@ -2627,29 +2628,22 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
         return APP_REDRAW_NONE;
     }
     if (s_page == SETTINGS_LOCK_STYLE) {
-        // 卡片命中带与渲染的 128px 间距一致；关闭档立即生效，壁纸/书封档先进选择器。
-        // Hit bands mirror the 128 px render pitch; the off entry applies at once, art entries open pickers.
-        if (y >= 300 && y < 410) {
-            app_settings_set_lock_style(4);
-            return APP_REDRAW_PAGE;
-        }
-        if (y >= 428 && y < 538) {
-            s_bookmark_picker=false;s_wallpaper_land=false;wallpaper_scan();
-            s_page = SETTINGS_WALLPAPER;
-            return APP_REDRAW_PAGE;
-        }
-        if (y >= 556 && y < 666) {
-            app_settings_set_lock_style(0);
-            return APP_REDRAW_PAGE;
-        }
-        if (y >= 684 && y < 794) {
-            app_settings_set_lock_style(2);
-            s_collage_prepare_pending = true;
-            return APP_REDRAW_PAGE;
-        }
-        if(y>=812&&y<922){
-            s_bookmark_picker=true;s_wallpaper_land=false;wallpaper_scan();s_page=SETTINGS_WALLPAPER;
-            return APP_REDRAW_PAGE;
+        // 卡片命中带与渲染的 104px 间距一致；关闭/票根/拼贴/极简时钟立即生效，壁纸/书封档先进选择器。
+        // Hit bands mirror the 104 px render pitch; off/ticket/collage/clock apply at once, wallpaper/PNG open pickers.
+        static const uint8_t lv[6] = {4, 1, 0, 2, 3, 5};
+        for (int i = 0; i < 6; ++i) {
+            int yb = 300 + i * 104;
+            if (y >= yb && y < yb + 100) {
+                if (lv[i] == 4 || lv[i] == 0 || lv[i] == 2 || lv[i] == 5) {
+                    app_settings_set_lock_style(lv[i]);
+                    if (lv[i] == 2) s_collage_prepare_pending = true;
+                    return APP_REDRAW_PAGE;
+                }
+                s_bookmark_picker = (lv[i] == 3);
+                s_wallpaper_land = false; wallpaper_scan();
+                s_page = SETTINGS_WALLPAPER;
+                return APP_REDRAW_PAGE;
+            }
         }
         if (y >= 984 && app_settings_wallpaper_path()[0]) {
             s_bookmark_picker=false;s_wallpaper_land=false;wallpaper_scan();

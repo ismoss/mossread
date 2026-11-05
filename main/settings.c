@@ -354,9 +354,9 @@ void app_settings_init(void) {
         system_contrast >= 100 && system_contrast <= 140 && system_contrast % 10 == 0)
         s_system_contrast = system_contrast;
     uint8_t lock_style = 0;
-    // 4 = 关闭锁屏画面（纯息屏），与票根/壁纸/拼贴/书封并列为一档样式。
-    // 4 = lock face off (blank sleep), kept in the same enum as ticket/wallpaper/collage/bookmark.
-    if (nvs_get_u8(h, NVS_KEY_LOCK_STYLE, &lock_style) == ESP_OK && lock_style <= 4)
+    // 4 = 关闭锁屏画面（纯息屏）；5 = 极简时钟；与票根/壁纸/拼贴/书封并列。
+    // 4 = lock face off (blank sleep); 5 = minimal clock; same enum as ticket/wallpaper/collage/bookmark.
+    if (nvs_get_u8(h, NVS_KEY_LOCK_STYLE, &lock_style) == ESP_OK && lock_style <= 5)
         s_lock_style = lock_style;
     uint32_t mon_pin_raw = 0;
     if (nvs_get_u32(h, NVS_KEY_MON_PIN, &mon_pin_raw) == ESP_OK && mon_pin_raw >= 1000 && mon_pin_raw <= 9999)
@@ -701,7 +701,7 @@ void app_settings_set_system_contrast(uint8_t percent) {
 }
 uint8_t app_settings_lock_style(void) { return s_lock_style; }
 void app_settings_set_lock_style(uint8_t style) {
-    if (style > 4 || style == s_lock_style) return;
+    if (style > 5 || style == s_lock_style) return;
     s_lock_style = style;
     nvs_put_u8(NVS_KEY_LOCK_STYLE, style);
 }

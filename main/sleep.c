@@ -27,6 +27,7 @@
 #include "lock_pin.h"
 #include "lock_screen.h"
 #include "read_pico_sd.h"
+#include "read_pico_pmu.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +43,31 @@
 #include "book_lock_collage.h"
 #include "book_lock_bookmark.h"
 #include "book_ticket.h"
+#include "ui_kit.h"
+
+// 极简时钟锁屏：大号时间 + 日期，跟随当前画布方向（竖/横）；无有效时钟显示 --:--。
+// Minimal clock lock: big time + date, follows current canvas orientation; --:-- without a valid clock.
+static bool draw_lock_clock(uint8_t* fb, bool landscape) {
+    time_t now = time(NULL);
+    const pmu_snapshot_t* pmu = read_pico_pmu_get();
+    if (now < 1704067200 && pmu && pmu->time_synced) now = pmu->unix_sec;
+    struct tm tmv; bool ok = now >= 1704067200 && localtime_r(&now, &tmv) != NULL;
+    int w = epd_width(), h = epd_height();
+    char hm[8];
+    if (ok) snprintf(hm, sizeof(hm), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+    else snprintf(hm, sizeof(hm), "--:--");
+    int cy = h / 2 - (landscape ? 10 : 50);
+    ui_text_vc(fb, w / 2, cy, landscape ? 168 : 208, hm, EPD_DRAW_ALIGN_CENTER, false);
+    if (ok) {
+        static const char* const wk[] = {"日", "一", "二", "三", "四", "五", "六"};
+        char ds[64];
+        snprintf(ds, sizeof(ds), "%d 年 %d 月 %d 日   周%s",
+                 tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday, wk[tmv.tm_wday % 7]);
+        ui_text_vc(fb, w / 2, cy + (landscape ? 150 : 190), landscape ? 28 : 34, ds, EPD_DRAW_ALIGN_CENTER, false);
+    }
+    ui_text_vc(fb, w / 2, h - (landscape ? 60 : 90), landscape ? 22 : 24, "mossread", EPD_DRAW_ALIGN_CENTER, false);
+    return true;
+}
 #include "display.h"
 #include "e0470_epaper_waveform.h"
 #include "ota_online.h"
@@ -638,7 +664,7 @@ void enter_lock_and_sleep(
     // collage lay out on the 1216×684 canvas; every other style and every portrait entry returns to
     // portrait first.
     enum EpdRotation prior_rotation = epd_get_rotation();
-    bool landscape_lock = (lock_style == 0 || lock_style == 1 || lock_style == 2 || lock_style == 3) &&
+    bool landscape_lock = (lock_style == 0 || lock_style == 1 || lock_style == 2 || lock_style == 3 || lock_style == 5) &&
                           (prior_rotation == EPD_ROT_LANDSCAPE || prior_rotation == EPD_ROT_INVERTED_LANDSCAPE);
     if (!landscape_lock) epd_set_rotation(EPD_ROT_INVERTED_PORTRAIT);
     // 透明书封保留当前页面作为底图，不清白、不重排阅读页，也不读取旧阅读快照。
@@ -657,7 +683,8 @@ void enter_lock_and_sleep(
         : ticket
         ? book_ticket_draw(framebuffer, reader_background)
         : lock_style == 2 ? book_lock_collage_prepare(framebuffer) :
-          lock_style == 3 ? book_lock_bookmark_draw(framebuffer,app_settings_bookmark_path()) : draw_wallpaper(framebuffer);
+          lock_style == 3 ? book_lock_bookmark_draw(framebuffer,app_settings_bookmark_path()) :
+          lock_style == 5 ? draw_lock_clock(framebuffer, landscape_lock) : draw_wallpaper(framebuffer);
     if (!lock_drawn) {
         // 兜底画面是竖屏构图的：横版票根画失败时先回竖屏再画，别把竖屏图案按横屏贴出去。
         // The fallback badge is laid out for portrait: when a landscape ticket fails to draw, return
