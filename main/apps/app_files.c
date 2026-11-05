@@ -200,7 +200,10 @@ static bool file_pager_event(app_ctx_t *ctx,const ui_gesture_event_t *ev,app_red
     return true;
 }
 static EpdRect home_transfer_rect(int index) {
-    return (EpdRect){36 + index * 208, 350, 196, 92};
+    // 三张传输卡整体下移 8px：与上方「传输文件」和下方「根目录」都留出呼吸空间，绘制与命中共用。
+    // The three transfer cards sit 8px lower for breathing room below the section title and above
+    // the root summary; drawing and hit-testing share this rect.
+    return (EpdRect){36 + index * 208, 358, 196, 92};
 }
 
 // 存储卡卡片的位置，绘制与命中测试共用一份，免得两处各写一个坐标。
@@ -865,10 +868,10 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
                        EPD_DRAW_ALIGN_CENTER, false);
         }
         char summary[48]; snprintf(summary, sizeof(summary), "根目录 · %d 项", s_count);
-        ui_text(fb, 36, 456, 21, summary, EPD_DRAW_ALIGN_LEFT, false);
-        ui_fill_round_rect(fb, (EpdRect){537, 458, 111, 50}, 23, UI_GRAY_WHITE);
-        ui_draw_control_frame(fb, (EpdRect){537, 458, 111, 50}, 23, 0x70);
-        ui_text_vc(fb, 592, 483, 19, "名称 ↑", EPD_DRAW_ALIGN_CENTER, false);
+        ui_text(fb, 36, 470, 21, summary, EPD_DRAW_ALIGN_LEFT, false);
+        ui_fill_round_rect(fb, (EpdRect){537, 472, 111, 50}, 23, UI_GRAY_WHITE);
+        ui_draw_control_frame(fb, (EpdRect){537, 472, 111, 50}, 23, 0x70);
+        ui_text_vc(fb, 592, 497, 19, "名称 ↑", EPD_DRAW_ALIGN_CENTER, false);
         int first = s_page * root_rows();
         int rows = s_count - first;
         if (rows > root_rows()) rows = root_rows();
