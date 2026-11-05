@@ -1,8 +1,8 @@
 # mossread · 小纸 Pico（RDP-G01-W）
 
-> **mossread 是给小纸 Pico（RDP-G01-W）做的社区阅读固件。** 本仓库由 **ismoss** 维护，以 [kiikoread（wegooo-cell/read-pico-reader）](https://github.com/wegooo-cell/read-pico-reader) 的 **0.3.3-rc100** 为技术基座（kiikoread 又基于 [MindReset 官方示例固件](https://github.com/MindReset/read_pico_firmware)），自此独立演进：产品名、版本线、更新源、界面品牌和发布节奏都归 **mossread**。与 MindReset、kiikoread 上游无隶属或背书关系；上游官网、更新日志、商店与 issue 区不覆盖本固件。
+> **mossread** 是给小纸 Pico（RDP-G01-W）做的社区阅读固件。它建立在 [kiikoread](https://github.com/wegooo-cell/read-pico-reader)（上游 **0.3.3-rc100**，作者 wegooo-cell）与 [MindReset 官方示例固件](https://github.com/MindReset/read_pico_firmware)之上；本仓库是 ismoss 维护的独立分支，产品命名、发布节奏和自建更新源由我们负责，底层能力与功劳归上游作者。这不是 MindReset 或 kiikoread 的官方发布，上游的官网、更新日志、商店、支持渠道与 issue 区不覆盖本固件。
 
-> **许可提醒。** 上游 rc93 及以前为 Apache-2.0；上游 rc94 起明确标注的新增原创内容适用[个人学习许可](licenses/kiikoread-Personal-Study-1.0.txt)（禁止商用）。本二改新增文件按 Apache-2.0 发布，但**组合固件仍包含上游的非商用材料**，请仅用于个人学习与自用，不要商用或售卖。完整范围见 [LICENSE](LICENSE)。
+> **许可提醒。** 上游 rc93 及以前为 Apache-2.0；上游 rc94 起明确标注的新增原创内容适用[个人学习许可](licenses/kiikoread-Personal-Study-1.0.txt)（禁止商用）。本项目新增文件按 Apache-2.0 发布，但**组合固件仍包含上游的非商用材料**，请仅用于个人学习与自用，不要商用或售卖。完整范围见 [LICENSE](LICENSE)。
 
 **当前版本**：以线上 [update.json](https://ismoss.github.io/mossread/update.json) 为准（2026-11-05 线上为 `0.3.3-rc100-mod118`） · **更新源**：`ismoss.github.io/mossread` · **设备**：小纸 Pico RDP-G01-W（ESP32-S3 / 16 MB Flash / 684×1216）
 
@@ -48,9 +48,11 @@
 | rc104 | 书架管理对齐文件页、阅读状态栏/工具栏回归修复、EPUB 脚注弹窗、GIF 首帧、JPEG 解码兜底、双击插图缩放、水波纹擦白/补黑、深睡单击续读 | 书架管理与深睡续读我们已有；脚注/GIF/JPEG 兜底值得拿；水波纹擦白要真机 A/B |
 | rc105 | 内建字库扩到 7668 字（16 级灰阶补字、逐字墨量校正）、默认全屏设置、阅读线跟随文字/整行、题头工具栏悬浮不重排、局部刷新精确到像素 | 字库是最大收益（先逻辑 +6KB，后资源 +469KB）；默认全屏/阅读线便宜可拿；悬浮重排风险高 |
 
-**按性价比的拿取顺序**：① 局部刷新精确像素边界（零冲突，修进度条被误驱动）② EPUB 两类打不开 ③ GIF 首帧 ④ JPEG 小平面兜底 ⑤ 书架批量读进度（每本少一次 NVS 打开）⑥ 字体缺字回退 ⑦ 相数上限 40→64（1 行）⑧ 默认全屏 / 阅读线整行。
+**已合入 `0.3.3-rc100-mod119`**：① 局部刷新精确像素边界 ② EPUB 两类打不开 ③ 内嵌 GIF 首帧 ④ JPEG 小平面兜底 ⑤ 字体缺字回退（逻辑部分；补字资源仍是单色，16 级灰阶的 PIF4 资源换装留待下一步）。
 
-**明确不拿**：书架管理重构（我们已有等价且冲突最大）、题头/状态栏两条（上游重构时自己弄丢又补回，我们从未丢）、翻页排除信息栏（与我们“页脚并进同一次 GL16”的策略相反）、备份文件改名（违反本仓规则）。
+**后续候选**：书架批量读进度（每本少一次 NVS 打开）、相数上限 40→64、默认全屏、阅读线"跟随文字/整行"。
+
+**暂不跟进**：书架管理重构（我们已有等价实现，改动面也很大）、题头/状态栏的两处调整（现有实现已经满足，不需要搬）、翻页排除信息栏（与本项目“页脚并进同一次 GL16”的刷新策略不同）、备份文件改名（会破坏已有备份的兼容性）。
 
 ### 分支
 

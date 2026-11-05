@@ -1,6 +1,6 @@
 # mossread · 小纸 Pico (RDP-G01-W)
 
-> **mossread is a community reading firmware for 小纸 Pico (RDP-G01-W).** Maintained by **ismoss** on the technical base of [kiikoread (`wegooo-cell/read-pico-reader`)](https://github.com/wegooo-cell/read-pico-reader) **0.3.3-rc100** (kiikoread itself builds on [MindReset's demo firmware](https://github.com/MindReset/read_pico_firmware)). From there it evolves independently: product name, version line, update feed, UI brand and release cadence all belong to **mossread**. It is not affiliated with, endorsed by, or supported by MindReset or the kiikoread maintainers; upstream release notes, sites, stores, support channels and issue trackers do not cover it.
+> **mossread** is a community reading firmware for 小纸 Pico (RDP-G01-W). It stands on the work of [kiikoread](https://github.com/wegooo-cell/read-pico-reader) (upstream **0.3.3-rc100**, by wegooo-cell), which in turn builds on [MindReset's demo firmware](https://github.com/MindReset/read_pico_firmware). This repository is an independent branch maintained by **ismoss**: naming, release cadence and the self-hosted update feed are ours; the foundation and credit belong to the upstream authors. It is not an official release of MindReset or kiikoread; upstream sites, release notes, stores, support channels and issue trackers do not cover it.
 
 > **License note.** Upstream code through rc93 is Apache-2.0. Upstream original material first published from rc94 and explicitly marked carries a [personal-study license](licenses/kiikoread-Personal-Study-1.0.txt) (no commercial use). New files added by this fork are Apache-2.0, but **the combined firmware still contains upstream noncommercial material** — use it for personal study and personal devices only; do not sell it or ship it commercially. See [LICENSE](LICENSE) for the exact scope.
 
@@ -58,9 +58,11 @@ Upstream restructured the repository into a Pico + Metalio S31 two-board tree (`
 | rc104 | Shelf management aligned with Files, reader status/toolbar regression fixes, EPUB footnote popups, GIF first frame, JPEG decode fallback, double-tap image zoom, ripple erase/black re-drive, one-press deep-sleep resume | Shelf management and deep-sleep resume already ours; footnotes/GIF/JPEG fallback worth taking; ripple cleanup needs a device A/B |
 | rc105 | Built-in font coverage to 7668 chars (16-level supplements, per-glyph ink), Default-fullscreen setting, reading guide text/full-row, overlay reader chrome without repagination, exact-bounds partial refresh | Font coverage is the biggest win (logic +6 KB first, assets +469 KB later); Default fullscreen / guide are cheap; overlay reflow is risky |
 
-**Take order by value**: 1) exact-bounds partial refresh (no conflicts, stops the progress bar being driven), 2) the two EPUB open failures, 3) GIF first frame, 4) JPEG fallback, 5) batched shelf progress (one NVS open instead of one per book), 6) missing-glyph fallback, 7) turn phase cap 40→64 (one line), 8) Default fullscreen / full-row guide.
+**Pulled into `0.3.3-rc100-mod119`**: 1) exact-bounds partial refresh, 2) the two EPUB open failures, 3) inline GIF first frame, 4) JPEG fallback, 5) missing-glyph fallback (logic stage; the supplement assets are still monochrome, with the 16-level PIF4 swap reserved for a later release).
 
-**Not taking**: the shelf-management re-architecture (we already have an equivalent and it collides with our mods), the header/status-bar pair (upstream lost them in its own refactor and restored them; we never lost them), per-turn metadata exclusion (opposite of our fused-footer strategy), and the backup-file rename (violates this repository's rules).
+**Candidates for later**: batched shelf progress (one NVS open instead of one per book), turn phase cap 40→64, Default fullscreen, and the reading guide's text/full-row switch.
+
+**Not taking for now**: the shelf-management re-architecture (we already have an equivalent implementation, and the change surface is large), the two header/status-bar adjustments (our current behaviour already matches, so there is nothing to port), per-turn metadata exclusion (differs from this project's fused-footer refresh strategy), and the backup-file rename (would break existing backup compatibility).
 
 ### Deliberately unchanged
 

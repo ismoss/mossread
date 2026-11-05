@@ -1,11 +1,16 @@
 # 版本变更 / Changelog
 
-## 未发布 · 2026-11-05 · 改名 mossread，更新源迁移
+## 0.3.3-rc100-mod119 / 2026-11-05 · 改名 mossread，吸收上游 rc105 可用改进
 
 - GitHub 仓库 `ismoss/read-pico-reader` → `ismoss/mossread`，私有开发仓 → `ismoss/mossread-dev`，本地 clone 目录改为 `mossread/`。
-- 固件自建更新源改为 `https://ismoss.github.io/mossread/update.json`，DNS 在线列表改为 `.../mossread/dns.json`，下载白名单同步更新；镜像 `project_name`（`Read_Pico`）、分区/OTA 布局、`Pico-update.bin`、`Pico-settings.backup` 等兼容标识不动，否则旧设备会拒收升级。
-- **升级须知**：仓库改名后旧 Pages 地址（`ismoss.github.io/read-pico-reader/`）已 404。跑在 mod118 及以前固件的设备需要手动刷一次带新地址的构建（TF 卡或 USB），之后联网 OTA 回到 `mossread` 新地址。
-- README 同步：项目定位写成独立固件 mossread（技术基座 kiikoread rc100），新增"上游 rc100 → rc105 变更与取舍"章节，版本/链接更新到 mod118 现状。
+- 固件自建更新源改为 `https://ismoss.github.io/mossread/update.json`，DNS 在线列表改为 `.../mossread/dns.json`，下载白名单同步更新；镜像 `project_name`（`Read_Pico`）、分区/OTA 布局、`Pico-update.bin`、`Pico-settings.backup` 等兼容标识不动。
+- **升级须知**：仓库改名后旧 Pages 地址（`ismoss.github.io/read-pico-reader/`）已 404。跑在 mod118 及以前固件的设备需要手动刷一次本版（TF 卡或 USB），之后联网 OTA 回到 `mossread` 新地址。
+- **局部刷新精确像素边界（上游 96b96e8）**：差分按 32 列对齐算，但只驱动/回写请求范围内的像素；沉浸阅读普通翻页不再把底部未读进度线带进灰阶扫描，修进度条/页脚"顺带"闪黑。
+- **EPUB 兼容（上游 4313082）**：EOCD 之后 ≤64 字节的非空白尾标记（例如下载器补的 `0x04`）、以及 EPUB3 `<spine>` 省略 `toc` 属性的书现在能正常打开；中央目录/条目边界与 CRC 校验不变。
+- **内嵌 GIF 首帧（上游 1fa257d + 5984101）**：正文/插图里的 GIF 不再显示"此插图暂无法显示"，只解首帧、透明底按白底合成、调色板亮度直接进灰度；截断块、缺失像素与画布外偏移按边界拒绝。
+- **JPEG 兜底（上游 75c0e5b）**：基线/带 Exif 的大图在 ROM 解码器失败或整幅 RGB565 超预算时，改用 JPEGDEC 直接解 1/2..1/8 小平面，避免整页插图缺失（渐进式仍走 mod85 的 lowzag 高清档）。
+- **字体缺字回退（上游 99951ba 的 Pico 逻辑）**：正文缺字先借内建轮廓，再借内建补字库；排版与绘制共用同一字宽，导入字体缺《》""、圈号、姓名字、生僻字时不再出现方块。内建补字资源仍是 PIF1 单色（16 级灰阶 + PIF4 资源换装留待下一步，+469 KB）。
+- README 同步：项目定位写成独立固件 mossread（技术基座 kiikoread rc100），新增"上游 rc100 → rc105 变更与取舍"章节。
 
 ## 0.3.3-rc100 / 2026-10-24
 

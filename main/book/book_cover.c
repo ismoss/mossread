@@ -172,6 +172,11 @@ static int jpegdec_collect(JPEGDRAW *draw) {
 // Under ESP-IDF JPEGDEC only offers the C++ class; the component wraps it with C linkage.
 extern int jpegdec_gray_progressive(const uint8_t *data, int size, JPEG_DRAW_CALLBACK *draw,
                                     void *user, int *drawn_width, int *drawn_height);
+// 基线/任意帧的 RAM 内灰阶解码，可按 1/2/4/8 缩小；用于 ROM 解码器失败时的兜底。
+// RAM grayscale decode for baseline or any frame with optional 1/2/4/8 scaling; a fallback when
+// the ROM decoder path fails.
+extern int jpegdec_gray_ram(const uint8_t *data, int size, int divisor, JPEG_DRAW_CALLBACK *draw,
+                            void *user, int *drawn_width, int *drawn_height);
 
 // 渐进式只取 DC 扫描，JPEGDEC 因此固定输出 1/8 分辨率；平面尺寸由帧头算出，
 // 与小平面一起缩到目标尺寸。对封面（176×240）来说已经足够，也避开了整幅系数数组。
@@ -223,6 +228,87 @@ static bool jpegdec_gray(const uint8_t *data, size_t size, unsigned frame_width,
     return ok;
 }
 
+// 已解码小平面 → 目标灰度：长边铺满、居中裁剪、双线性；GIF 与 JPEG 兜底共用。
+// Map a decoded plane to the target: fill the longer side, centre-crop, bilinear; shared by GIF
+// and the JPEG fallback.
+static bool jpegdec_plane_gray(const uint8_t *plane, unsigned stride, unsigned height,
+                               unsigned out_width, unsigned out_height, uint8_t *out) {
+    if (!plane || !stride || !height) return false;
+    const book_crop_t crop = book_cover_crop(stride, height, out_width, out_height);
+    scale_step_t *xmap = scale_map(out_width, crop.width);
+    scale_step_t *ymap = scale_map(out_height, crop.height);
+    bool ok = false;
+    if (xmap && ymap) {
+        for (unsigned y = 0; y < out_height; ++y) {
+            const int sy = ymap[y].at, fy = ymap[y].frac;
+            const int sy1 = scale_next(sy, crop.height);
+            const uint8_t *r0 = plane + (size_t)(crop.y + (unsigned)sy) * stride;
+            const uint8_t *r1 = plane + (size_t)(crop.y + (unsigned)sy1) * stride;
+            for (unsigned x = 0; x < out_width; ++x) {
+                const int sx = xmap[x].at, fx = xmap[x].frac;
+                const int sx1 = scale_next(sx, crop.width);
+                out[y * out_width + x] = bilinear4(
+                    r0[crop.x + (unsigned)sx], r0[crop.x + (unsigned)sx1],
+                    r1[crop.x + (unsigned)sx], r1[crop.x + (unsigned)sx1], fx, fy);
+            }
+            decode_yield(y);
+        }
+        ok = true;
+    }
+    free(xmap);
+    free(ymap);
+    return ok;
+}
+
+// ROM 解码器失败时的兜底：JPEGDEC 直接解 1/2..1/8 小平面，内存占用远低于整幅 RGB565。
+// Fallback when the ROM decoder path fails: JPEGDEC decodes a 1/2..1/8 plane directly, far
+// less memory than a full RGB565 frame.
+static bool jpegdec_gray_fallback(const uint8_t *data, size_t size, unsigned frame_width,
+                                  unsigned frame_height, unsigned out_width, unsigned out_height,
+                                  uint8_t *out) {
+    if (!data || size < 4 || size > INT32_MAX || !frame_width || !frame_height) return false;
+    unsigned divisor = 1;
+    while (divisor < 8 && frame_width / (divisor * 2) >= out_width &&
+           frame_height / (divisor * 2) >= out_height) divisor *= 2;
+    jpegdec_plane_t plane = {
+        .stride = (frame_width + divisor - 1) / divisor,
+        .height = (frame_height + divisor - 1) / divisor,
+    };
+    if (plane.stride > 4096 || plane.height > 4096) return false;
+    plane.plane = cover_alloc((size_t)plane.stride * plane.height);
+    if (!plane.plane) return false;
+    memset(plane.plane, 0xFF, (size_t)plane.stride * plane.height);
+    const bool decoded = jpegdec_gray_ram(data, (int)size, (int)divisor, jpegdec_collect, &plane,
+                                          NULL, NULL) != 0;
+    bool ok = false;
+    if (decoded) {
+        const book_crop_t crop = book_cover_crop(plane.stride, plane.height, out_width, out_height);
+        scale_step_t *xmap = scale_map(out_width, crop.width);
+        scale_step_t *ymap = scale_map(out_height, crop.height);
+        if (xmap && ymap) {
+            for (unsigned y = 0; y < out_height; ++y) {
+                const int sy = ymap[y].at, fy = ymap[y].frac;
+                const int sy1 = scale_next(sy, crop.height);
+                const uint8_t *r0 = plane.plane + (size_t)(crop.y + (unsigned)sy) * plane.stride;
+                const uint8_t *r1 = plane.plane + (size_t)(crop.y + (unsigned)sy1) * plane.stride;
+                for (unsigned x = 0; x < out_width; ++x) {
+                    const int sx = xmap[x].at, fx = xmap[x].frac;
+                    const int sx1 = scale_next(sx, crop.width);
+                    out[y * out_width + x] = bilinear4(
+                        r0[crop.x + (unsigned)sx], r0[crop.x + (unsigned)sx1],
+                        r1[crop.x + (unsigned)sx], r1[crop.x + (unsigned)sx1], fx, fy);
+                }
+                decode_yield(y);
+            }
+            ok = true;
+        }
+        free(xmap);
+        free(ymap);
+    }
+    free(plane.plane);
+    return ok;
+}
+
 #ifdef KIIKO_USE_LOWZAG
 static bool lowzag_gray(const uint8_t *data, size_t size, unsigned out_width, unsigned out_height,
                         uint8_t *out);
@@ -233,7 +319,8 @@ static bool jpeg_gray(const uint8_t *data, size_t size, unsigned out_width,
     if (size > UINT32_MAX) return false;
     uint8_t sof = 0;
     unsigned frame_width = 0, frame_height = 0;
-    if (book_jpeg_frame(data, size, &sof, &frame_width, &frame_height) && sof == 0xC2) {
+    const bool have_frame = book_jpeg_frame(data, size, &sof, &frame_width, &frame_height);
+    if (have_frame && sof == 0xC2) {
 #ifdef KIIKO_USE_LOWZAG
         // 渐进式先试 lowzag 高清选档，失败再回落 JPEGDEC 的 1/8 DC 快速路径。
         // Progressive tries lowzag's HD ladder first, then falls back to JPEGDEC's 1/8 DC fast path.
@@ -249,7 +336,10 @@ static bool jpeg_gray(const uint8_t *data, size_t size, unsigned out_width,
     bool decoded = false;
     for (int scale = JPEG_IMAGE_SCALE_0; scale <= JPEG_IMAGE_SCALE_1_8; ++scale) {
         cfg.out_scale = scale;
-        if (esp_jpeg_get_image_info(&cfg, &info) != ESP_OK) return false;
+        // 取信息失败或整幅 RGB565 超预算时继续尝试更小的缩放，最后交给 JPEGDEC 兜底。
+        // On info failure or an over-budget RGB565 frame, try a smaller scale and finally the
+        // JPEGDEC fallback instead of giving up.
+        if (esp_jpeg_get_image_info(&cfg, &info) != ESP_OK) break;
         if (!info.width || !info.height || !info.output_len || info.output_len > limit) continue;
         uint8_t *pixels = cover_alloc(info.output_len);
         if (!pixels) continue;
@@ -285,7 +375,11 @@ static bool jpeg_gray(const uint8_t *data, size_t size, unsigned out_width,
         free(pixels);
         if (decoded) break;
     }
-    return decoded;
+    if (decoded) return true;
+    // 大尺寸 Exif JPEG 在部分基线上会让 ROM 解码器失败；JPEGDEC 直接解 1/2..1/8 小平面。
+    // Large Exif baseline JPEGs can defeat the ROM decoder; let JPEGDEC decode a 1/2..1/8 plane.
+    return have_frame && jpegdec_gray_fallback(data, size, frame_width, frame_height,
+                                               out_width, out_height, out);
 }
 
 // WebP：解成 RGB565 平面（组件按像素上限自动等比缩小），再走与基线 JPEG 相同的裁剪缩放。
@@ -604,12 +698,201 @@ bool book_cover_thumbnail(const uint8_t *data, size_t size, bool png,
     return book_image_grayscale(data, size, png, BOOK_COVER_W, BOOK_COVER_H, out);
 }
 
+// GIF：只解第一帧（书内小图标/内嵌插图常是 GIF，动图也只显示首帧）；
+// 透明像素保留白底，调色板亮度直接进灰度。
+// GIF: decode only the first frame (inline book icons/illustrations are often GIF; animated
+// files show their first frame). Transparent pixels keep a white background and palette entries
+// convert straight to gray by luminance.
+typedef struct { const uint8_t *data; size_t size, at; uint8_t block[256]; int block_len, block_pos; } gif_stream_t;
+
+static int gif_stream_byte(gif_stream_t *s) {
+    if (s->block_pos >= s->block_len) {
+        if (s->at >= s->size) return -1;
+        const int n = s->data[s->at++];
+        if (n <= 0 || s->at + (size_t)n > s->size) return -1;
+        memcpy(s->block, s->data + s->at, (size_t)n);
+        s->at += (size_t)n;
+        s->block_len = n;
+        s->block_pos = 0;
+    }
+    return s->block[s->block_pos++];
+}
+
+// 标准 GIF LZW 解码；interlace 按四遍行序落盘，索引表尺寸由调用方保证。
+// Standard GIF LZW decode; interlace writes the four-pass row order into the caller's index plane.
+static bool gif_lzw_decode(const uint8_t *data, size_t size, size_t start, int min_code,
+                           unsigned width, unsigned height, uint8_t *idx) {
+    if (min_code < 2 || min_code > 8 || !width || !height) return false;
+    const int clear = 1 << min_code, end = clear + 1;
+    // 字典放 PSRAM：这几张表约 20 KiB，放主任务栈会直接溢出（开书/解码路径栈很紧）。
+    // Keep the dictionary in PSRAM: ~20 KiB on the main task stack overflows the tight
+    // open/decode path.
+    uint8_t *dict = cover_alloc(4096u * 2u + 4096u * 3u);
+    if (!dict) return false;
+    int16_t *prefix = (int16_t*)dict;
+    uint8_t *suffix = dict + 4096u * 2u;
+    uint8_t *first = suffix + 4096u;
+    uint8_t *stack = first + 4096u;
+    for (int i = 0; i < clear; ++i) { prefix[i] = -1; suffix[i] = first[i] = (uint8_t)i; }
+    gif_stream_t s = { .data = data, .size = size, .at = start };
+    int code_size = min_code + 1, next = clear + 2, prev = -1;
+    uint32_t acc = 0;
+    int bits = 0;
+    unsigned x = 0, row = 0;
+    for (;;) {
+        while (bits < code_size) {
+            const int b = gif_stream_byte(&s);
+            if (b < 0) do { free(dict); return false; } while (0);
+            acc |= (uint32_t)b << bits;
+            bits += 8;
+        }
+        int code = (int)(acc & ((1u << code_size) - 1));
+        acc >>= code_size; bits -= code_size;
+        if (code == clear) { code_size = min_code + 1; next = clear + 2; prev = -1; continue; }
+        if (code == end) break;
+        if (code > next) do { free(dict); return false; } while (0);
+        const int code_in = code;
+        int sp = 0;
+        uint8_t first_char;
+        if (code == next) {
+            if (prev < 0) do { free(dict); return false; } while (0);
+            first_char = first[prev];
+            stack[sp++] = first_char;
+            code = prev;
+        } else {
+            first_char = first[code];
+        }
+        int c = code;
+        while (c >= 0 && sp < 4096) { stack[sp++] = suffix[c]; c = prefix[c]; }
+        if (c >= 0) do { free(dict); return false; } while (0);
+        while (sp > 0) {
+            if (row >= height) do { free(dict); return false; } while (0);
+            idx[(size_t)row * width + x] = stack[--sp];
+            if (++x >= width) {
+                x = 0; ++row;
+            }
+        }
+        if (prev >= 0 && next < 4096) {
+            prefix[next] = (int16_t)prev;
+            suffix[next] = first_char;
+            first[next] = first[prev];
+            if (++next >= (1 << code_size) && code_size < 12) ++code_size;
+        }
+        // 字典链必须接本次读到的码，不能用临时展开后的码，否则 KwKwK 之后全部错位。
+        // The dictionary chain links the code just read, not the temporary expanded code;
+        // otherwise every pixel after the first KwKwK case shifts.
+        prev = code_in;
+    }
+    free(dict);
+    // 结束码不能代替缺失像素，否则会读取未初始化的索引。/ An end code cannot stand in for missing pixels.
+    return row == height && x == 0;
+}
+
+static bool gif_gray(const uint8_t *data, size_t size, unsigned out_width, unsigned out_height,
+                     uint8_t *out) {
+    unsigned gw = 0, gh = 0;
+    if (!book_gif_frame(data, size, &gw, &gh)) return false;
+    const size_t screen_bytes = (size_t)gw * gh;
+    if (!screen_bytes || screen_bytes > 4u * 1024u * 1024u) return false;
+    bool gct = (data[10] & 0x80) != 0;
+    const int gct_size = gct ? (2 << (data[10] & 7)) : 0;
+    const uint8_t *gct_ptr = gct ? data + 13 : NULL;
+    size_t at = gct ? 13 + (size_t)gct_size * 3 : 13;
+    if (at > size) return false;
+    int transparent = -1;
+    while (at < size) {
+        const uint8_t tag = data[at++];
+        if (tag == 0x3B) break;
+        if (tag == 0x21) {
+            if (at >= size) return false;
+            const uint8_t label = data[at++];
+            if (label == 0xF9 && at + 5 <= size) {
+                const uint8_t len = data[at++];
+                if (len >= 4 && at + len <= size) {
+                    const uint8_t packed = data[at];
+                    if (packed & 1) transparent = data[at + 3];
+                }
+                at += len;
+                if (at < size) ++at;
+                continue;
+            }
+            while (at < size) {
+                const uint8_t n = data[at++];
+                if (!n) break;
+                at += n;
+                if (at > size) return false;
+            }
+            continue;
+        }
+        if (tag != 0x2C || at + 9 > size) return false;
+        const unsigned left = data[at] | (data[at + 1] << 8);
+        const unsigned top = data[at + 2] | (data[at + 3] << 8);
+        const unsigned fw = data[at + 4] | (data[at + 5] << 8);
+        const unsigned fh = data[at + 6] | (data[at + 7] << 8);
+        const uint8_t packed = data[at + 8];
+        at += 9;
+        const uint8_t *pal = gct_ptr;
+        int pal_size = gct_size;
+        if (packed & 0x80) {
+            const int lsize = 2 << (packed & 7);
+            if (at + (size_t)lsize * 3 > size) return false;
+            pal = data + at;
+            pal_size = lsize;
+            at += (size_t)lsize * 3;
+        }
+        if (!pal || !pal_size || !fw || !fh || fw > 2048 || fh > 2048) return false;
+        if ((size_t)fw * fh > 4u * 1024u * 1024u || at >= size) return false;
+        const int min_code = data[at++];
+        uint8_t *idx = cover_alloc((size_t)fw * fh);
+        if (!idx) return false;
+        const bool interlace = (packed & 0x40) != 0;
+        if (!gif_lzw_decode(data, size, at, min_code, fw, fh, idx)) {
+            free(idx);
+            return false;
+        }
+        uint8_t *screen = cover_alloc(screen_bytes);
+        if (!screen) { free(idx); return false; }
+        memset(screen, 255, screen_bytes);
+        // 交错 GIF 的存储行序按四遍扫描重排到画布行；逐行写入避免整帧索引乱序。
+        // Interlaced GIFs store rows in four passes; reorder them onto canvas rows while copying.
+        static const unsigned pass_start[4] = {0, 4, 2, 1}, pass_step[4] = {8, 8, 4, 2};
+        unsigned pass = 0, target_row = 0;
+        for (unsigned yy = 0; yy < fh; ++yy) {
+            const unsigned draw_y = interlace ? target_row : yy;
+            if (top + draw_y < gh) {
+                for (unsigned xx = 0; xx < fw; ++xx) {
+                    const uint8_t index = idx[(size_t)yy * fw + xx];
+                    if ((int)index == transparent) continue;
+                    const unsigned px = left + xx;
+                    if (px >= gw) continue;
+                    const uint8_t *rgb = pal + (size_t)(index % (unsigned)pal_size) * 3;
+                    screen[(size_t)(top + draw_y) * gw + px] =
+                        (uint8_t)(((unsigned)rgb[0] * 77 + (unsigned)rgb[1] * 150 + (unsigned)rgb[2] * 29) >> 8);
+                }
+            }
+            if (interlace) {
+                target_row += pass_step[pass];
+                while (pass < 3 && target_row >= fh) {
+                    ++pass;
+                    target_row = pass_start[pass];
+                }
+            }
+        }
+        const bool ok = jpegdec_plane_gray(screen, gw, gh, out_width, out_height, out);
+        free(screen);
+        free(idx);
+        return ok;
+    }
+    return false;
+}
+
 bool book_image_grayscale(const uint8_t *data, size_t size, bool png,
                           unsigned out_width, unsigned out_height, uint8_t *out) {
     if (!data || !size || !out || !out_width || !out_height ||
         out_width > 1216 || out_height > 1216 || (size_t)out_width * out_height > 684u * 1216u)
         return false;
     if (book_webp_is(data, size)) return webp_gray(data, size, out_width, out_height, out);
+    if (book_gif_is(data, size)) return gif_gray(data, size, out_width, out_height, out);
     return png ? png_gray_input(data, size, NULL, out_width, out_height, out, NULL)
                : jpeg_gray(data, size, out_width, out_height, out);
 }

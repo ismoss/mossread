@@ -83,6 +83,17 @@ static bool trailing_whitespace(const uint8_t* data, size_t len) {
     return true;
 }
 
+// 尾部容忍：空白（历史行为）或不超过 64 字节的短打包器标记（例如下载器补的 0x04）。
+// EOCD 的注释长度仍定义归档结尾，中央目录/条目范围与 CRC 校验不变。
+// Trailing tolerance: whitespace (existing) or a bounded packer tag of at most 64 bytes
+// (for example the 0x04 bytes some downloaders append). The EOCD comment length still
+// defines the archive end; central-directory/entry bounds and CRC checks are unchanged.
+#define TRAILING_PADDING_MAX 64U
+static bool trailing_padding(const uint8_t* data, size_t len) {
+    if (trailing_whitespace(data, len)) return true;
+    return len <= TRAILING_PADDING_MAX;
+}
+
 void zip_close(zip_reader_t* z) {
     if (!z) return;
     if (z->file) fclose(z->file);
@@ -117,7 +128,7 @@ esp_err_t zip_open(const char* path, zip_reader_t** out) {
         if (u32(tail + end) == UINT32_C(0x06054b50)) {
             size_t declared_end = end + 22U + u16(tail + end + 20);
             if (declared_end <= tail_len &&
-                trailing_whitespace(tail + declared_end, tail_len - declared_end)) break;
+                trailing_padding(tail + declared_end, tail_len - declared_end)) break;
         }
         if (!end) goto fail;
         --end;

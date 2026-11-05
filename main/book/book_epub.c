@@ -681,9 +681,11 @@ static esp_err_t package_parse(book_epub_t *book, const char *opf, char ncx[EPUB
         while (xml_next(&xml, &t)) {
             if (t.kind == XML_OPEN && local_name(t.name, "spine")) {
                 if (seen_spine) { err = ESP_ERR_INVALID_ARG; break; }
-                seen_spine = true; spine_depth = t.depth; char toc[EPUB_ID_CAP];
-                if (!attribute(t, "toc", toc, sizeof(toc))) { err = ESP_ERR_INVALID_ARG; break; }
-                int index = item_find(items, slots, slot_count - 1, toc);
+                seen_spine = true; spine_depth = t.depth; char toc[EPUB_ID_CAP] = {0};
+                // EPUB3 的目录来自 nav 文档，spine 的 toc 属性可以缺省。
+                // EPUB3 navigation comes from the nav document, so the spine toc attribute is optional.
+                const bool has_toc = attribute(t, "toc", toc, sizeof(toc));
+                int index = has_toc ? item_find(items, slots, slot_count - 1, toc) : -1;
                 const char *name = index >= 0 ? zip_entry_name(book->zip, items[index].zip_index) : NULL;
                 if (name && items[index].ncx) strcpy(ncx, name);
             }
@@ -1996,7 +1998,8 @@ esp_err_t book_epub_image(book_epub_t *book, size_t chapter, const char *src,
     bool is_png = n >= 8 && !memcmp(image, "\x89PNG\r\n\x1a\n", 8);
     bool is_jpeg = n >= 3 && image[0] == 0xff && image[1] == 0xd8 && image[2] == 0xff;
     bool is_webp = n >= 12 && !memcmp(image, "RIFF", 4) && !memcmp(image + 8, "WEBP", 4);
-    if (!is_png && !is_jpeg && !is_webp) {
+    bool is_gif = book_gif_is(image, n);
+    if (!is_png && !is_jpeg && !is_webp && !is_gif) {
         // 许多中文 EPUB 用 SVG 只包一张 JPEG/PNG。解析这一层引用即可复用现有低内存解码器。
         // Many Chinese EPUBs wrap one JPEG/PNG in SVG. Resolve that one reference and reuse the bounded decoder.
         char nested[EPUB_PATH_CAP] = {0};
@@ -2028,7 +2031,8 @@ esp_err_t book_epub_image(book_epub_t *book, size_t chapter, const char *src,
         is_png = n >= 8 && !memcmp(image, "\x89PNG\r\n\x1a\n", 8);
         is_jpeg = n >= 3 && image[0] == 0xff && image[1] == 0xd8 && image[2] == 0xff;
         is_webp = n >= 12 && !memcmp(image, "RIFF", 4) && !memcmp(image + 8, "WEBP", 4);
-        if (!is_png && !is_jpeg && !is_webp) { free(image); return ESP_ERR_NOT_SUPPORTED; }
+        is_gif = book_gif_is(image, n);
+        if (!is_png && !is_jpeg && !is_webp && !is_gif) { free(image); return ESP_ERR_NOT_SUPPORTED; }
     }
     *data = image; *size = n; *png = is_png;
     return ESP_OK;
