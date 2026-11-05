@@ -104,6 +104,7 @@
 #define NVS_KEY_BOOK_INDENT "bk_indent"
 #define NVS_KEY_BOOK_INDENT_ADJUST "bk_indent_adj"
 #define NVS_KEY_BOOK_RULE "bk_rule"
+#define NVS_KEY_BOOK_RULE_FULL "bk_rule_full"
 #define NVS_KEY_BOOK_RULE_OFFSET "bk_rule_y"
 #define NVS_KEY_SHELF_STYLE "shelf_ui"
 #define NVS_KEY_SHELF_V22 "shelf_v22"
@@ -193,6 +194,9 @@ static bool s_book_fonts = true;
 // untouched.
 static bool s_book_vertical;
 static uint8_t s_book_tracking = -APP_BOOK_TRACK_MIN, s_book_reading_line, s_book_rule_offset = 4;
+// 阅读线范围：false 跟随文字，true 整行/整列；默认跟随文字。
+// Guide span: false follows text, true spans the full row/column; defaults to following text.
+static bool s_book_rule_full;
 static uint8_t s_book_indent = 2;
 static uint8_t s_book_indent_adjust = 20;
 static uint8_t s_auto_lock_minutes;
@@ -461,6 +465,9 @@ void app_settings_init(void) {
         s_book_reading_line = reading_line;
     if (nvs_get_u8(h, NVS_KEY_BOOK_RULE_OFFSET, &rule_offset) == ESP_OK && rule_offset <= 8)
         s_book_rule_offset = rule_offset;
+    uint8_t rule_full = 0;
+    if (nvs_get_u8(h, NVS_KEY_BOOK_RULE_FULL, &rule_full) == ESP_OK)
+        s_book_rule_full = rule_full == 1;
     if (nvs_get_u8(h, NVS_KEY_BOOK_INDENT, &indent) == ESP_OK && indent <= 3)
         s_book_indent = indent;
     s_book_indent_adjust = nvs_get_u8(h, NVS_KEY_BOOK_INDENT_ADJUST, &indent_adjust) == ESP_OK && indent_adjust <= 200
@@ -1066,6 +1073,12 @@ void app_settings_set_book_reading_line(uint8_t style) {
     if (style > 2 || style == s_book_reading_line) return;
     s_book_reading_line = style;
     nvs_put_u8(NVS_KEY_BOOK_RULE, style);
+}
+bool app_settings_book_reading_line_full(void) { return s_book_rule_full; }
+void app_settings_set_book_reading_line_full(bool full) {
+    if (full == s_book_rule_full) return;
+    s_book_rule_full = full;
+    nvs_put_u8(NVS_KEY_BOOK_RULE_FULL, full ? 1 : 0);
 }
 int8_t app_settings_book_reading_line_offset(void) { return (int8_t)((int)s_book_rule_offset - 4) * 2; }
 void app_settings_set_book_reading_line_offset(int8_t offset_px) {

@@ -41,7 +41,7 @@ assert subtables, "No Unicode cmap in the embedded font"
 # Match ui_font_has_text: system glyphs come from both the TTF and the embedded Han supplement.
 hanzi = (root / "main/assets/ui-hanzi.bin").read_bytes()
 magic, count, px, block = struct.unpack_from("<4sIII", hanzi)
-assert magic == b"PIF1" and count <= 6763 and px == 24 and block == 32
+assert magic in (b"PIF1",b"PIF4") and count <= 6763 and px == 24 and block == 32
 assert 16 + count * 2 + ((count + 31) // 32 + 1) * 4 <= len(hanzi)
 hanzi_codepoints = set(struct.unpack_from("<" + "H" * count, hanzi, 16))
 
@@ -81,18 +81,25 @@ last = source.index("static void draw_font_picker(", first)
 section = source[first:last]
 labels = re.findall(r'"([^"\n]*)"', section)
 # 本地快刷细点阵说明也必须使用完整系统字形。/ The local fine-dot mode explanation also needs complete system glyphs.
+# 首次引导必须在尚未导入字体时显示提示。/ Setup warnings must work before any card font exists.
+labels += re.findall(r'"([^"\n]*)"', (root / 'main/apps/app_onboarding.c').read_text())
 settings = (root / "main/apps/app_device_settings.c").read_text()
 first = settings.index("if (s_page == SETTINGS_MAIN_REFRESH) {")
 last = settings.index("if (s_page == SETTINGS_SYSTEM_CONTRAST) {", first)
 labels += re.findall(r'"([^"\n]*)"', settings[first:last])
-# 共用键盘必须始终使用系统字形；退格图案由线段绘制。
-# Shared keys must always use system glyphs; backspace is drawn with lines.
+# 样式选择的标签/说明不能因新增玻璃样式而整行回退字体。
+# New shelf labels/descriptions must not force the whole line to another face.
+first=settings.index("if (s_page == SETTINGS_SHELF_STYLE) {",settings.index("static void render_content("))
+last=settings.index("if (s_page == SETTINGS_TIME_EDIT) {",first)
+labels += re.findall(r'"([^"\n]*)"',settings[first:last])
+# 共用键盘必须始终使用系统字形；退格和上档图案由线段绘制。
+# Shared keys use system glyphs; backspace and shift are drawn with lines.
 keyboard=(root/'main/ui/ui_keyboard.c').read_text()
 labels += [ast.literal_eval(literal) for literal in re.findall(r'"(?:\\.|[^"\\])*"', keyboard)]
 labels += ["抗锯齿", "左上一页 · 中工具栏 · 右下一页", "左回首页 · 中全屏 · 右工具栏", "缩进微调", "%+d px · 复位", "−"]
 missing = {}
 for label in labels:
-    absent = "".join(dict.fromkeys(ch for ch in label if ch != "⌫" and ord(ch) >= 32 and not has_glyph(ord(ch))))
+    absent = "".join(dict.fromkeys(ch for ch in label if ch not in "⌫⇧" and ord(ch) >= 32 and not has_glyph(ord(ch))))
     if absent:
         missing[label] = absent
 assert not missing, f"System UI labels fall back to the reading font: {missing}"

@@ -2677,12 +2677,26 @@ static EpdRect rule_style_rect(int index) {
     return (EpdRect){36 + index * 208, 788, 196, 120};
 }
 
+// 阅读线范围开关：标题行右侧的胶囊，点按在「跟随文字 / 整行」之间切换。
+// Guide-span switch: the pill on the title row; a tap toggles text vs full row.
+static EpdRect rule_span_rect(void) {
+    return (EpdRect){reader_w() - 282, reader_rule_top() + 148, 246, 52};
+}
+
 static void draw_rule_settings(uint8_t *fb) {
     const int top = reader_rule_top();
     const bool wide = reader_panel_landscape();
     draw_sheet(fb, top, "阅读线");
     draw_sheet_back(fb, top);
     reader_panel_text(fb, 42, top + 161, 21, "选择样式", EPD_DRAW_ALIGN_LEFT, false);
+    {
+        EpdRect span = rule_span_rect();
+        const bool full = app_settings_book_reading_line_full();
+        ui_fill_round_rect(fb, span, 26, 0xe8);
+        ui_draw_control_frame(fb, span, 26, 0x78);
+        reader_panel_text_vc(fb, span.x + span.width / 2, span.y + span.height / 2, 21,
+                             full ? "范围 · 整行" : "范围 · 跟随文字", EPD_DRAW_ALIGN_CENTER, false);
+    }
     static const char *const names[] = {"无", "虚线", "点线"};
     int selected = app_settings_book_reading_line();
     for (int i = 0; i < 3; ++i) {
@@ -7144,6 +7158,13 @@ static app_redraw_t reader_panel_action(app_ctx_t* ctx, uint16_t x, uint16_t y) 
             invalidate_prep();
             return APP_REDRAW_PAGE;
         }
+        if (ui_rect_hit(rule_span_rect(), x, y)) {
+            const bool next = !app_settings_book_reading_line_full();
+            app_settings_set_book_reading_line_full(next);
+            book_layout_set_reading_line_full(next);
+            invalidate_prep();
+            return APP_REDRAW_PAGE;
+        }
         if (app_settings_book_reading_line()) {
             int offset = app_settings_book_reading_line_offset();
             if (ui_rect_hit(rule_offset_rect(0), x, y)) offset -= 2;
@@ -7712,6 +7733,7 @@ static void on_enter(app_ctx_t* ctx) {
     book_layout_set_first_line_indent(app_settings_book_indent());
     book_layout_set_first_line_indent_adjust(app_settings_book_indent_adjust());
     book_layout_set_reading_line(app_settings_book_reading_line());
+    book_layout_set_reading_line_full(app_settings_book_reading_line_full());
     book_layout_set_reading_line_offset(app_settings_book_reading_line_offset());
     // 字体页可能刚改过书内字体开关；回正文时重排当前章，别让用户对着旧排版猜。
     // The font page may have just changed the embedded-face switch; re-typeset this chapter
