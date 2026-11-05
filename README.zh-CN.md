@@ -4,7 +4,7 @@
 
 > **许可提醒。** 上游 rc93 及以前为 Apache-2.0；上游 rc94 起明确标注的新增原创内容适用[个人学习许可](licenses/kiikoread-Personal-Study-1.0.txt)（禁止商用）。本项目新增文件按 Apache-2.0 发布，但**组合固件仍包含上游的非商用材料**，请仅用于个人学习与自用，不要商用或售卖。完整范围见 [LICENSE](LICENSE)。
 
-**当前版本**：以线上 [update.json](https://ismoss.github.io/mossread/update.json) 为准（2026-11-05 线上为 `0.3.3-rc100-mod119`） · **更新源**：`ismoss.github.io/mossread` · **设备**：小纸 Pico RDP-G01-W（ESP32-S3 / 16 MB Flash / 684×1216）
+**当前版本**：以线上 [update.json](https://ismoss.github.io/mossread/update.json) 为准（2026-11-05 线上为 `0.3.3-rc100-mod120`） · **更新源**：`ismoss.github.io/mossread` · **设备**：小纸 Pico RDP-G01-W（ESP32-S3 / 16 MB Flash / 684×1216）
 
 [安装](#三安装与回退) · [改了什么](#四二改做了什么) · [版本线](#五版本线) · [构建](#七从源码构建) · [许可与致谢](#九许可致谢与边界) · [English](README.md)
 
@@ -32,7 +32,7 @@
 | 项 | 上游 kiikoread | 本二改 |
 | :--- | :--- | :--- |
 | 基线 | `0.3.3-rc100` | 同源起家，之后独立演进（mod 线） |
-| 版本号 | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`，例如 `0.3.3-rc100-mod119` |
+| 版本号 | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`，例如 `0.3.3-rc100-mod120` |
 | 更新源 | kiikoread.com / 上游 GitHub Pages | 自建 `ismoss.github.io/mossread`，不跟随上游 |
 | 支持 | 上游 issue / 官网 | 本仓库 issue；上游不负责本固件 |
 | 许可 | Apache-2.0 + rc94 起个人学习许可 | 上游许可原样保留；本固件新增文件 Apache-2.0 |
@@ -48,11 +48,9 @@
 | rc104 | 书架管理对齐文件页、阅读状态栏/工具栏回归修复、EPUB 脚注弹窗、GIF 首帧、JPEG 解码兜底、双击插图缩放、水波纹擦白/补黑、深睡单击续读 | 书架管理与深睡续读我们已有；脚注/GIF/JPEG 兜底值得拿；水波纹擦白要真机 A/B |
 | rc105 | 内建字库扩到 7668 字（16 级灰阶补字、逐字墨量校正）、默认全屏设置、阅读线跟随文字/整行、题头工具栏悬浮不重排、局部刷新精确到像素 | 字库是最大收益（先逻辑 +6KB，后资源 +469KB）；默认全屏/阅读线便宜可拿；悬浮重排风险高 |
 
-**已合入 `0.3.3-rc100-mod119`**：① 局部刷新精确像素边界 ② EPUB 两类打不开 ③ 内嵌 GIF 首帧 ④ JPEG 小平面兜底 ⑤ 字体缺字回退（逻辑部分；补字资源仍是单色，16 级灰阶的 PIF4 资源换装留待下一步）。
+**已合入 `mod119` → `mod120`**：① 局部刷新精确像素边界 ② EPUB 两类打不开 ③ 内嵌 GIF 首帧 ④ JPEG 小平面兜底 ⑤ 字体缺字回退（mod119 逻辑 + mod120 的 PIF4 16 级灰阶补字资源）⑥ 书架批量读进度 ⑦ 相数上限 40→64 ⑧ 阅读线「跟随文字 / 整行」开关。
 
-**已在源码中、等下一次发布**：书架批量读进度（每本少一次 NVS 打开，`1c022a4`）、相数上限 40→64（`165c0f7`，LUT 在 PSRAM）。
-
-**后续候选**：默认全屏、阅读线"跟随文字/整行"。
+**暂未做**：默认全屏——mossread 阅读页本来就是进书即全屏，单独加开关只有同时做「标准模式进书」才有意义，留给后续单独改动。
 
 **暂不跟进**：书架管理重构（我们已有等价实现，改动面也很大）、题头/状态栏的两处调整（现有实现已经满足，不需要搬）、翻页排除信息栏（与本项目“页脚并进同一次 GL16”的刷新策略不同）、备份文件改名（会破坏已有备份的兼容性）。
 
@@ -88,13 +86,13 @@
 
 ### 3.2 从 kiikoread 升级（推荐）
 
-1. 打开 [update.json](https://ismoss.github.io/mossread/update.json)，取 `version` 与 `url`；2026-11-05 线上为 `0.3.3-rc100-mod119`。
+1. 打开 [update.json](https://ismoss.github.io/mossread/update.json)，取 `version` 与 `url`；2026-11-05 线上为 `0.3.3-rc100-mod120`。
 2. 下载对应的 `Pico-update-*.bin`，**改名为 `Pico-update.bin`**，放到 TF 卡根目录。
 3. 设备上进入 **设置 → 升级和恢复 → 系统升级 → TF 卡升级**，确认后等待写入与重启。
 4. 重启后进入 **设置 → 升级和恢复 → 系统升级**，应能看到自建 feed 的版本信息；以后可直接联网检查更新。
 
 直接下载当前版本：
-<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod119.bin>
+<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod120.bin>
 
 > 文件名 `Pico-update.bin` 是上游固件约定的兼容名，不要改；每次升级覆盖同一路径即可。
 
@@ -273,7 +271,7 @@
 ```sh
 python3 tools/prepare_tls_bundle.py "$IDF_PATH"
 idf.py set-target esp32s3
-PICO_PROJECT_VER=0.3.3-rc100-mod119 idf.py build
+PICO_PROJECT_VER=0.3.3-rc100-mod120 idf.py build
 ```
 
 - `sdkconfig.defaults` 是本开发板的 Flash/PSRAM 时序；`sdkconfig.ci` 只用于编译检查，不要把 CI 时序当产品默认。

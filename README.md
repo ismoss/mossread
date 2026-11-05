@@ -4,7 +4,7 @@
 
 > **License note.** Upstream code through rc93 is Apache-2.0. Upstream original material first published from rc94 and explicitly marked carries a [personal-study license](licenses/kiikoread-Personal-Study-1.0.txt) (no commercial use). New files added by this fork are Apache-2.0, but **the combined firmware still contains upstream noncommercial material** — use it for personal study and personal devices only; do not sell it or ship it commercially. See [LICENSE](LICENSE) for the exact scope.
 
-**Current build:** live [update.json](https://ismoss.github.io/mossread/update.json) is authoritative (2026-11-05: `0.3.3-rc100-mod119`) · **Update feed:** `ismoss.github.io/mossread` · **Device:** 小纸 Pico RDP-G01-W (ESP32-S3 / 16 MB flash / 684×1216)
+**Current build:** live [update.json](https://ismoss.github.io/mossread/update.json) is authoritative (2026-11-05: `0.3.3-rc100-mod120`) · **Update feed:** `ismoss.github.io/mossread` · **Device:** 小纸 Pico RDP-G01-W (ESP32-S3 / 16 MB flash / 684×1216)
 
 [Install](#3-install-and-rollback) · [What changed](#4-what-this-mod-changes) · [Version line](#5-version-line) · [Build](#7-build-from-source) · [License & credit](#9-license-credit-and-boundaries) · [简体中文](README.zh-CN.md)
 
@@ -32,7 +32,7 @@ The mod focuses on four things:
 | Item | Upstream kiikoread | This mod |
 | :--- | :--- | :--- |
 | Baseline | `0.3.3-rc100` | Shared origin, then independent evolution (mod line) |
-| Version | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`, e.g. `0.3.3-rc100-mod119` |
+| Version | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`, e.g. `0.3.3-rc100-mod120` |
 | Updates | kiikoread.com / upstream GitHub Pages | Self-hosted `ismoss.github.io/mossread`; never follows upstream |
 | Support | Upstream issues / site | This repository; upstream does not support this firmware |
 | License | Apache-2.0 + personal-study from rc94 | Upstream terms preserved; new files here Apache-2.0 |
@@ -58,11 +58,9 @@ Upstream restructured the repository into a Pico + Metalio S31 two-board tree (`
 | rc104 | Shelf management aligned with Files, reader status/toolbar regression fixes, EPUB footnote popups, GIF first frame, JPEG decode fallback, double-tap image zoom, ripple erase/black re-drive, one-press deep-sleep resume | Shelf management and deep-sleep resume already ours; footnotes/GIF/JPEG fallback worth taking; ripple cleanup needs a device A/B |
 | rc105 | Built-in font coverage to 7668 chars (16-level supplements, per-glyph ink), Default-fullscreen setting, reading guide text/full-row, overlay reader chrome without repagination, exact-bounds partial refresh | Font coverage is the biggest win (logic +6 KB first, assets +469 KB later); Default fullscreen / guide are cheap; overlay reflow is risky |
 
-**Pulled into `0.3.3-rc100-mod119`**: 1) exact-bounds partial refresh, 2) the two EPUB open failures, 3) inline GIF first frame, 4) JPEG fallback, 5) missing-glyph fallback (logic stage; the supplement assets are still monochrome, with the 16-level PIF4 swap reserved for a later release).
+**Pulled into `mod119` → `mod120`**: 1) exact-bounds partial refresh, 2) the two EPUB open failures, 3) inline GIF first frame, 4) JPEG fallback, 5) missing-glyph fallback (mod119 logic plus mod120's PIF4 16-level supplement assets), 6) batched shelf progress, 7) turn phase cap 40→64, 8) the reading guide's follow-text / full-row switch.
 
-**In the tree, awaiting the next release**: batched shelf progress (one NVS open instead of one per book, `1c022a4`) and the turn phase cap 40→64 (`165c0f7`, LUT stays in PSRAM).
-
-**Candidates for later**: Default fullscreen and the reading guide's text/full-row switch.
+**Not done**: a Default-fullscreen switch — mossread already opens a book fullscreen, so the switch only makes sense alongside a standard-mode entry model; left for a separate change.
 
 **Not taking for now**: the shelf-management re-architecture (we already have an equivalent implementation, and the change surface is large), the two header/status-bar adjustments (our current behaviour already matches, so there is nothing to port), per-turn metadata exclusion (differs from this project's fused-footer refresh strategy), and the backup-file rename (would break existing backup compatibility).
 
@@ -88,13 +86,13 @@ If the current system does not qualify, use the official web flasher to install 
 
 ### 3.2 From kiikoread (recommended)
 
-1. Open [update.json](https://ismoss.github.io/mossread/update.json) and read `version` and `url`; 2026-11-05: `0.3.3-rc100-mod119`.
+1. Open [update.json](https://ismoss.github.io/mossread/update.json) and read `version` and `url`; 2026-11-05: `0.3.3-rc100-mod120`.
 2. Download the matching `Pico-update-*.bin`, **rename it to `Pico-update.bin`**, and put it in the TF-card root.
 3. On the device: **Settings → Upgrade & restore → System update → TF-card update**, confirm, and wait for the write and reboot.
 4. After reboot, **Settings → Upgrade & restore → System update** should show the self-hosted feed; later checks can run over WiFi.
 
 Direct link to the current image:
-<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod119.bin>
+<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod120.bin>
 
 > `Pico-update.bin` is the compatibility name expected by the upstream firmware; do not change it. Overwrite the same path for each update.
 
@@ -273,7 +271,7 @@ Requires **ESP-IDF v6.1**, target ESP32-S3:
 ```sh
 python3 tools/prepare_tls_bundle.py "$IDF_PATH"
 idf.py set-target esp32s3
-PICO_PROJECT_VER=0.3.3-rc100-mod119 idf.py build
+PICO_PROJECT_VER=0.3.3-rc100-mod120 idf.py build
 ```
 
 - `sdkconfig.defaults` carries this board's flash/PSRAM timing; `sdkconfig.ci` is compile-only. Do not ship the CI timing as the product default.
