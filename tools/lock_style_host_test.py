@@ -67,6 +67,7 @@ static bool lock_screen_save(const uint8_t *fb){assert(fb==pixels&&presents);ret
 static int pico_boot_mark_frame_cached(void){return 0;}
 static bool book_lock_collage_draw(uint8_t *fb){return draw(2,fb);}
 static bool book_lock_collage_prepare(uint8_t *fb){return draw(2,fb);}
+static bool draw_lock_clock(uint8_t *fb,bool landscape){(void)landscape;memset(fb,0x15,FRAME_BYTES);return true;}
 static enum EpdDrawError update_display_full(EpdiyHighlevelState *h){(void)h;++full_presents;assert(!s_lock_feedback_visible);if(feedback_seen)assert(panel[0]==255&&panel[1]==0);if(!final_ok){panel[0]=0x77;return EPD_DRAW_FAULT;}memcpy(panel,pixels,FRAME_BYTES);++presents;return EPD_DRAW_SUCCESS;}
 static void guard_draw_result(EpdiyHighlevelState *h,enum EpdDrawError result){(void)h;(void)result;}
 static void book_lock_collage_cache_commit(const uint8_t *fb){assert(style==2&&draw_ok&&presents==1&&fb==pixels&&!memcmp(panel,pixels,FRAME_BYTES));}
