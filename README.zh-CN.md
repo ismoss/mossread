@@ -4,7 +4,7 @@
 
 > **许可提醒。** 上游 rc93 及以前为 Apache-2.0；上游 rc94 起明确标注的新增原创内容适用[个人学习许可](licenses/kiikoread-Personal-Study-1.0.txt)（禁止商用）。本项目新增文件按 Apache-2.0 发布，但**组合固件仍包含上游的非商用材料**，请仅用于个人学习与自用，不要商用或售卖。完整范围见 [LICENSE](LICENSE)。
 
-**当前版本**：以线上 [update.json](https://ismoss.github.io/mossread/update.json) 为准（2026-11-05 线上为 `0.3.3-rc100-mod118`） · **更新源**：`ismoss.github.io/mossread` · **设备**：小纸 Pico RDP-G01-W（ESP32-S3 / 16 MB Flash / 684×1216）
+**当前版本**：以线上 [update.json](https://ismoss.github.io/mossread/update.json) 为准（2026-11-05 线上为 `0.3.3-rc100-mod119`） · **更新源**：`ismoss.github.io/mossread` · **设备**：小纸 Pico RDP-G01-W（ESP32-S3 / 16 MB Flash / 684×1216）
 
 [安装](#三安装与回退) · [改了什么](#四二改做了什么) · [版本线](#五版本线) · [构建](#七从源码构建) · [许可与致谢](#九许可致谢与边界) · [English](README.md)
 
@@ -32,7 +32,7 @@
 | 项 | 上游 kiikoread | 本二改 |
 | :--- | :--- | :--- |
 | 基线 | `0.3.3-rc100` | 同源起家，之后独立演进（mod 线） |
-| 版本号 | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`，例如 `0.3.3-rc100-mod118` |
+| 版本号 | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`，例如 `0.3.3-rc100-mod119` |
 | 更新源 | kiikoread.com / 上游 GitHub Pages | 自建 `ismoss.github.io/mossread`，不跟随上游 |
 | 支持 | 上游 issue / 官网 | 本仓库 issue；上游不负责本固件 |
 | 许可 | Apache-2.0 + rc94 起个人学习许可 | 上游许可原样保留；本固件新增文件 Apache-2.0 |
@@ -86,13 +86,13 @@
 
 ### 3.2 从 kiikoread 升级（推荐）
 
-1. 打开 [update.json](https://ismoss.github.io/mossread/update.json)，取 `version` 与 `url`；2026-11-05 线上为 `0.3.3-rc100-mod118`。
+1. 打开 [update.json](https://ismoss.github.io/mossread/update.json)，取 `version` 与 `url`；2026-11-05 线上为 `0.3.3-rc100-mod119`。
 2. 下载对应的 `Pico-update-*.bin`，**改名为 `Pico-update.bin`**，放到 TF 卡根目录。
 3. 设备上进入 **设置 → 升级和恢复 → 系统升级 → TF 卡升级**，确认后等待写入与重启。
 4. 重启后进入 **设置 → 升级和恢复 → 系统升级**，应能看到自建 feed 的版本信息；以后可直接联网检查更新。
 
 直接下载当前版本：
-<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod118.bin>
+<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod119.bin>
 
 > 文件名 `Pico-update.bin` 是上游固件约定的兼容名，不要改；每次升级覆盖同一路径即可。
 
@@ -271,7 +271,7 @@
 ```sh
 python3 tools/prepare_tls_bundle.py "$IDF_PATH"
 idf.py set-target esp32s3
-PICO_PROJECT_VER=0.3.3-rc100-mod118 idf.py build
+PICO_PROJECT_VER=0.3.3-rc100-mod119 idf.py build
 ```
 
 - `sdkconfig.defaults` 是本开发板的 Flash/PSRAM 时序；`sdkconfig.ci` 只用于编译检查，不要把 CI 时序当产品默认。
