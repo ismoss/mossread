@@ -19,12 +19,12 @@
 // 官方清单一旦出现更高版本号会把官方整镜像推进来，等于自动顶掉二改。
 // Self-hosted feed: the primary URL is fixed to our GitHub Pages; the official fallback is
 // intentionally empty, because a higher upstream version would push a stock image that wipes the mods.
-#define PICO_OTA_FEED_URL "https://ismoss.github.io/read-pico-reader/update.json"
+#define PICO_OTA_FEED_URL "https://ismoss.github.io/mossread/update.json"
 // No automatic upstream fallback: an official image could overwrite the downstream mod.
 // Keep this empty until a separately authenticated mod mirror is available.
 #define PICO_OTA_FEED_FALLBACK_URL ""
 // 自建源上的公共 DNS 列表，供「DNS 设置」页在线获取。/ Public DNS list on the self-hosted origin for the DNS settings page.
-#define PICO_OTA_DNS_URL "https://ismoss.github.io/read-pico-reader/dns.json"
+#define PICO_OTA_DNS_URL "https://ismoss.github.io/mossread/dns.json"
 
 typedef enum { PICO_UPDATE_IDLE, PICO_UPDATE_CHECKING, PICO_UPDATE_AVAILABLE,
                PICO_UPDATE_LATEST, PICO_UPDATE_DOWNLOADING, PICO_UPDATE_READY,

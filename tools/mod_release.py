@@ -15,7 +15,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-ORIGIN = "https://ismoss.github.io/read-pico-reader"
+ORIGIN = "https://ismoss.github.io/mossread"
 FEED = ORIGIN + "/update.json"
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)-rc(\d+)(?:-mod(\d+))?$")
 

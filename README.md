@@ -1,10 +1,10 @@
 # mossread · 小纸 Pico (RDP-G01-W)
 
-> **Independent downstream build — not an official release.** This repository is maintained by **ismoss** as a fork of [kiikoread (`wegooo-cell/read-pico-reader`)](https://github.com/wegooo-cell/read-pico-reader), based on upstream **0.3.3-rc100**. kiikoread itself is built on [MindReset's demo firmware](https://github.com/MindReset/read_pico_firmware). This mod is not affiliated with, endorsed by, or supported by MindReset or the kiikoread maintainers; upstream release notes, sites, stores, support channels and issue trackers do not cover it.
+> **mossread is a community reading firmware for 小纸 Pico (RDP-G01-W).** Maintained by **ismoss** on the technical base of [kiikoread (`wegooo-cell/read-pico-reader`)](https://github.com/wegooo-cell/read-pico-reader) **0.3.3-rc100** (kiikoread itself builds on [MindReset's demo firmware](https://github.com/MindReset/read_pico_firmware)). From there it evolves independently: product name, version line, update feed, UI brand and release cadence all belong to **mossread**. It is not affiliated with, endorsed by, or supported by MindReset or the kiikoread maintainers; upstream release notes, sites, stores, support channels and issue trackers do not cover it.
 
 > **License note.** Upstream code through rc93 is Apache-2.0. Upstream original material first published from rc94 and explicitly marked carries a [personal-study license](licenses/kiikoread-Personal-Study-1.0.txt) (no commercial use). New files added by this fork are Apache-2.0, but **the combined firmware still contains upstream noncommercial material** — use it for personal study and personal devices only; do not sell it or ship it commercially. See [LICENSE](LICENSE) for the exact scope.
 
-**Current build:** `0.3.3-rc100-mod64` (2026-10-30) · **Update feed:** [update.json](https://ismoss.github.io/read-pico-reader/update.json) · **Device:** 小纸 Pico RDP-G01-W (ESP32-S3 / 16 MB flash / 684×1216)
+**Current build:** live [update.json](https://ismoss.github.io/mossread/update.json) is authoritative (2026-11-05: `0.3.3-rc100-mod118`) · **Update feed:** `ismoss.github.io/mossread` · **Device:** 小纸 Pico RDP-G01-W (ESP32-S3 / 16 MB flash / 684×1216)
 
 [Install](#3-install-and-rollback) · [What changed](#4-what-this-mod-changes) · [Version line](#5-version-line) · [Build](#7-build-from-source) · [License & credit](#9-license-credit-and-boundaries) · [简体中文](README.zh-CN.md)
 
@@ -31,21 +31,36 @@ The mod focuses on four things:
 
 | Item | Upstream kiikoread | This mod |
 | :--- | :--- | :--- |
-| Baseline | `0.3.3-rc100` | Same source tree + mod patches |
-| Version | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`, e.g. `0.3.3-rc100-mod64` |
-| Updates | kiikoread.com / upstream GitHub Pages | Self-hosted `ismoss.github.io/read-pico-reader`; never follows upstream |
-| Support | Upstream issues / site | This repository; upstream does not support the mod |
-| License | Apache-2.0 + personal-study from rc94 | Upstream terms preserved; new mod files Apache-2.0 |
+| Baseline | `0.3.3-rc100` | Shared origin, then independent evolution (mod line) |
+| Version | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`, e.g. `0.3.3-rc100-mod118` |
+| Updates | kiikoread.com / upstream GitHub Pages | Self-hosted `ismoss.github.io/mossread`; never follows upstream |
+| Support | Upstream issues / site | This repository; upstream does not support this firmware |
+| License | Apache-2.0 + personal-study from rc94 | Upstream terms preserved; new files here Apache-2.0 |
 
 ### Branches
 
 | Branch | Role |
 | :--- | :--- |
-| `main` | Upstream source mirror + this fork's landing README; **no mod code** |
-| `mod/glass-dock-lockoff` | Mod source, CI, OTA feed publishing; day-to-day work happens here |
+| `main` | Upstream source mirror + this firmware's landing README; **no mod code** |
+| `mod/glass-dock-lockoff` | Firmware source, CI, OTA feed publishing; day-to-day work happens here |
 | `pr/*` | Upstream-worthy fixes prepared as separate pull requests, keeping mod-only changes out of upstream PRs |
 
-> Why a self-hosted feed: a higher official version would overwrite the mod on the next online check, taking landscape lock, DNS and the remote monitor with it. The self-hosted feed prevents that at the root. The trade-off: mod devices **stop receiving official updates**, and going back requires a manual flash (see below).
+> Why a self-hosted feed: a higher official version would overwrite this firmware on the next online check, taking landscape lock, DNS and the remote monitor with it. The self-hosted feed prevents that at the root. The trade-off: mossread devices **stop receiving official updates**, and going back requires a manual flash (see below).
+
+### Upstream rc100 → rc105: what they changed, what we take (checked 2026-11-05)
+
+Upstream restructured the repository into a Pico + Metalio S31 two-board tree (`boards/`) and merged PR55–75. What matters for the Pico:
+
+| Release | Upstream did | Our call |
+| :--- | :--- | :--- |
+| rc102 | Liquid-glass shelf, unconfigured default look, English TeX hyphenation + word spacing, TXT volume TOC/quick volume picker, image viewer actions | Glass shelf already ours (mod118); word spacing already in rc100; hyphenation and volumes only if needed |
+| rc103 | Full-pixel GL16 turns, static WebP, full progressive JPEG, EPUB EOCD-trailer and EPUB3-spine compatibility, files management suite, first-run setup / UI language switch | WebP (mod84), progressive JPEG (mod85) and files management (mod88–93) are ours already; the two EPUB compatibility fixes are worth taking (small, no conflicts) |
+| rc104 | Shelf management aligned with Files, reader status/toolbar regression fixes, EPUB footnote popups, GIF first frame, JPEG decode fallback, double-tap image zoom, ripple erase/black re-drive, one-press deep-sleep resume | Shelf management and deep-sleep resume already ours; footnotes/GIF/JPEG fallback worth taking; ripple cleanup needs a device A/B |
+| rc105 | Built-in font coverage to 7668 chars (16-level supplements, per-glyph ink), Default-fullscreen setting, reading guide text/full-row, overlay reader chrome without repagination, exact-bounds partial refresh | Font coverage is the biggest win (logic +6 KB first, assets +469 KB later); Default fullscreen / guide are cheap; overlay reflow is risky |
+
+**Take order by value**: 1) exact-bounds partial refresh (no conflicts, stops the progress bar being driven), 2) the two EPUB open failures, 3) GIF first frame, 4) JPEG fallback, 5) batched shelf progress (one NVS open instead of one per book), 6) missing-glyph fallback, 7) turn phase cap 40→64 (one line), 8) Default fullscreen / full-row guide.
+
+**Not taking**: the shelf-management re-architecture (we already have an equivalent and it collides with our mods), the header/status-bar pair (upstream lost them in its own refactor and restored them; we never lost them), per-turn metadata exclusion (opposite of our fused-footer strategy), and the backup-file rename (violates this repository's rules).
 
 ### Deliberately unchanged
 
@@ -69,13 +84,13 @@ If the current system does not qualify, use the official web flasher to install 
 
 ### 3.2 From kiikoread (recommended)
 
-1. Open [update.json](https://ismoss.github.io/read-pico-reader/update.json) and read `version` and `url`; currently `0.3.3-rc100-mod64`.
+1. Open [update.json](https://ismoss.github.io/mossread/update.json) and read `version` and `url`; 2026-11-05: `0.3.3-rc100-mod118`.
 2. Download the matching `Pico-update-*.bin`, **rename it to `Pico-update.bin`**, and put it in the TF-card root.
 3. On the device: **Settings → Upgrade & restore → System update → TF-card update**, confirm, and wait for the write and reboot.
 4. After reboot, **Settings → Upgrade & restore → System update** should show the self-hosted feed; later checks can run over WiFi.
 
 Direct link to the current image:
-<https://ismoss.github.io/read-pico-reader/Pico-update-0.3.3-rc100-mod64.bin>
+<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod118.bin>
 
 > `Pico-update.bin` is the compatibility name expected by the upstream firmware; do not change it. Overwrite the same path for each update.
 
@@ -221,7 +236,7 @@ These are not new features; they are paths that looked fine but never actually w
 - The remote monitor is a LAN tool, off by default, with no public-internet authentication/encryption; do not port-forward it.
 - FAT16/FAT32 only; exFAT is not enabled, and a large card is not automatically compatible.
 - Inherited EPUB limits remain: 4 MB per XHTML resource, 8 MB per decompressed image, 8192 ZIP entries/chapters.
-- The full on-device walk-through for mod1–mod64 is still in progress; green CI is not a hardware acceptance for every item.
+- The full on-device walk-through for mod1–mod118 is still in progress; green CI is not a hardware acceptance for every item.
 
 ## 5. Version line
 
@@ -230,10 +245,11 @@ These are not new features; they are paths that looked fine but never actually w
 | Start | mod1–mod19 | Fork release line, version scheme, self-hosted OTA, dual-repo engineering rules; in-book landscape, chunked shelf scan + index, font system; DNS, known WiFi, first remote monitor, dual-mode transfer |
 | Network & monitor | mod20–mod26 | Real auto-switch fix, auto-connect switch, upgrade indicators, monitor image/scale/connection fixes |
 | Landscape lock, update chain & rebrand | mod27–mod64 | Monitor move + one-time RAM token, DNS router default, auto-connect inheritance, zero warnings; font root cause; landscape ticket/keypad/collage/wallpaper slots/transparent cover; wallpaper preview; transfer semantics; update rate/redirect/slow link; monitor PIN and touch expiry; GC16 lock settle; transparent-cover boot-cache guard; audit hardening (strict landscape enum, cover bounds, 90s manifest, disconnect hold); key evidence separates real power/deep-sleep wakes from OTA/reset boots; boot face is no longer duplicated before a direct passcode, and transparent-cover startup avoids the white badge flash |
+| Direction, files & highlights | mod65–mod118 | Four turn modes, wallpaper direction/cover rotation; adaptive reading direction (four-way incl. 180°, absolute attitude, persisted lock, touch/gesture rotation); configurable reader gestures; power-key tap to turn; WebP + progressive JPEG; memory policy; deep-sleep single-press with the small lock face; file-management suite (sort / recursive search / book stats / list-grid / cross-page multi-select / batch delete / batch move); highlights (panel, underline, line capture, char-precise spans, tags, notes, Markdown export, press-drag select); Markdown reading and light rendering; minimal clock lock; liquid-glass shelf |
 
 - Per-release user-visible changes: [docs/CHANGELOG.md](docs/CHANGELOG.md)
 - Batches, decisions and rejected work: [docs/ROADMAP.md](docs/ROADMAP.md)
-- Live version: [update.json](https://ismoss.github.io/read-pico-reader/update.json)
+- Live version: [update.json](https://ismoss.github.io/mossread/update.json)
 
 ## 6. Verification status
 
@@ -242,7 +258,7 @@ These are not new features; they are paths that looked fine but never actually w
 | Build | GitHub Actions, ESP-IDF v6.1, board `sdkconfig.defaults` timing | Passing; zero warnings since mod30 |
 | Host regressions | Display/reader/lock/shelf/EPUB/settings/OTA TLS/DNS/monitor BMP suites | Passing on every push |
 | Published feed | Post-deploy check of update.json, image size, SHA-256 and live fetch | Passing on every dispatch |
-| On-device walk-through | Manual acceptance of mod1–mod64 | **In progress**; individual fixes marked hardware-confirmed in the changelog |
+| On-device walk-through | Manual acceptance of mod1–mod118 | **In progress**; individual fixes marked hardware-confirmed in the changelog |
 
 We try to keep “verified” and “merely compiled” separate. If an item has no hardware note, treat it as code/CI-level evidence, not a device promise.
 
@@ -253,7 +269,7 @@ Requires **ESP-IDF v6.1**, target ESP32-S3:
 ```sh
 python3 tools/prepare_tls_bundle.py "$IDF_PATH"
 idf.py set-target esp32s3
-PICO_PROJECT_VER=0.3.3-rc100-mod64 idf.py build
+PICO_PROJECT_VER=0.3.3-rc100-mod118 idf.py build
 ```
 
 - `sdkconfig.defaults` carries this board's flash/PSRAM timing; `sdkconfig.ci` is compile-only. Do not ship the CI timing as the product default.
@@ -298,7 +314,7 @@ The combined firmware contains both Apache-2.0 and upstream personal-study mater
 ### Credit
 
 - [MindReset](https://dot.mindreset.tech/docs/read_0): hardware, demo firmware and documentation.
-- [Kiiko厂长 / wegooo-cell](https://github.com/wegooo-cell/read-pico-reader) and the kiikoread contributors: the entire foundation of this fork.
+- [Kiiko厂长 / wegooo-cell](https://github.com/wegooo-cell/read-pico-reader) and the kiikoread contributors: the entire technical foundation of mossread.
 - Upstream third-party components and font authors: Lucide, epdiy, pypinyin, Noto.
 - The other 小纸 Pico community system authors: their public work and discussions made many problems easier to locate.
 
@@ -311,10 +327,10 @@ The combined firmware contains both Apache-2.0 and upstream personal-study mater
 ## 10. Reporting and etiquette
 
 - **When reporting a bug**, include the version (shown under `Settings → Upgrade & restore → System update`, or update.json), device model, reproduction steps, whether it was a TF/OTA install, and a serial log or photo. Do not paste WiFi passwords, device tokens or full configuration backups.
-- **Do not** pass a mod build off as an official build, and do not use “official” or “by MindReset” wording. A mod is a mod.
+- **Do not** pass a mossread build off as an official build, and do not use “official” or “by MindReset” wording.
 - **Do not** strip copyright headers, license files or credits before redistributing; never sell it.
 - Fixes that are also useful upstream are prepared as separate `pr/*` branches rather than smuggling mod-only changes into an upstream PR; whether upstream accepts them is upstream's call.
-- Other community systems (if-ink OS, Take Easy, PageRest, Pico Page, the CrossMux family, etc.) make different trade-offs. This is one opinionated fork; when borrowing ideas, respect their licenses and credit them.
+- Other community systems (if-ink OS, Take Easy, PageRest, Pico Page, the CrossMux family, etc.) make different trade-offs. mossread is one opinionated choice; when borrowing ideas, respect their licenses and credit them.
 
 ## Appendix A: Inherited upstream capabilities
 
@@ -330,14 +346,14 @@ The mod keeps the full kiikoread foundation. The most-asked parts:
 
 | Purpose | URL |
 | :--- | :--- |
-| Mod update feed | <https://ismoss.github.io/read-pico-reader/update.json> |
-| Mod DNS online list | <https://ismoss.github.io/read-pico-reader/dns.json> |
-| Mod source (this branch) | <https://github.com/ismoss/read-pico-reader/tree/mod/glass-dock-lockoff> |
+| Firmware update feed | <https://ismoss.github.io/mossread/update.json> |
+| Firmware DNS online list | <https://ismoss.github.io/mossread/dns.json> |
+| Firmware source (this branch) | <https://github.com/ismoss/mossread/tree/mod/glass-dock-lockoff> |
 | Upstream kiikoread | <https://github.com/wegooo-cell/read-pico-reader> |
 | Official web flasher (rollback) | <https://kiikoread.com/#flash-action> |
 | Official device docs | <https://dot.mindreset.tech/docs/read_0> |
-| Mod changelog | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
-| Mod roadmap | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Firmware changelog | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
+| Firmware roadmap | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | License scope | [LICENSE](LICENSE) |
 | Third-party notices | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |
 | Privacy | [PRIVACY.md](PRIVACY.md) |

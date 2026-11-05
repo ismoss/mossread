@@ -167,7 +167,7 @@ Defined in [`main/app/app.h`](main/app/app.h). The loop presents via `app_presen
 
 ## 硬约束 / Hard rules
 
-- 用户 2026-10-09 确认上游项目品牌为小写 `kiikoread`，网页设备称「墨水屏」，页面底色采用明亮纯白。保留 `wegooo-cell/read-pico-reader` 仓库网址与已发布下载/OTA地址、备份文件名和内部协议标识。用户 2026-10-28 决定二改固件的用户可见品牌统一为 `mossread`；主站 OTA 继续使用 kiikoread.com，并保留 GitHub 回退源。/ The upstream project brand remains lowercase `kiikoread`, with “墨水屏” for devices on the bright-white website. Preserve the upstream repository/download/OTA URLs, backup filenames and internal protocol identifiers. On 2026-10-28 the user chose `mossread` as the mod firmware's user-visible brand; keep kiikoread.com as the primary OTA host and retain the GitHub fallback.
+- 用户 2026-10-28 把本固件定名 **mossread**；2026-11-05 进一步要求仓库改名 `ismoss/mossread`（私有开发仓 `ismoss/mossread-dev`），自建 OTA 源随之改为 `https://ismoss.github.io/mossread/`，不再使用上游仓库名做门面。上游品牌 `kiikoread`（小写）与「墨水屏」页面措辞、`wegooo-cell/read-pico-reader` 的出处引用保留；内部协议标识（镜像 `project_name=Read_Pico`、分区/OTA 布局、`Pico-update.bin`、`Pico-settings.backup` 等兼容文件名）一律不动——改了旧设备就收不到升级。/ On 2026-10-28 the firmware was named **mossread**; on 2026-11-05 the user asked for the repository rename to `ismoss/mossread` (private dev repo `ismoss/mossread-dev`) and the self-hosted OTA origin to `https://ismoss.github.io/mossread/`, ending the upstream-name facade. Keep the `kiikoread` brand, “墨水屏” wording and attribution to `wegooo-cell/read-pico-reader`; never change internal protocol identifiers (image `project_name=Read_Pico`, partition/OTA layout, `Pico-update.bin`, `Pico-settings.backup`) — old devices would stop seeing updates.
 
 `冻结 / Frozen:` 段落是产品决策，不是建议。改行为前必须先改这段，并说明为什么决策变了。
 

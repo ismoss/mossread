@@ -6,7 +6,7 @@
 
 ## 1. 个人信息零提交（绝对）
 
-公开仓库（ismoss/read-pico-reader）**禁止出现任何个人信息**，包括但不限于：
+公开仓库（ismoss/mossread）**禁止出现任何个人信息**，包括但不限于：
 
 - 真实邮箱（git 作者/提交者邮箱一律用 `ismoss@users.noreply.github.com`；本机 `git config user.email` 已设，勿改回）
 - WiFi SSID/密码、设备标识、串号、位置、姓名、手机号、QQ 号

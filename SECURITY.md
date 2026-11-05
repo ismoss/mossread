@@ -2,7 +2,7 @@
 
 This is an independent downstream mod maintained by `ismoss`. It is not affiliated with MindReset or the upstream `wegooo-cell/read-pico-reader` project. Report problems in this mod here, not through MindReset's or the upstream project's private channels.
 
-Use this repository's [private vulnerability report](https://github.com/ismoss/read-pico-reader/security/advisories/new) when available. If private reporting is disabled, open an issue asking for a private contact channel without posting exploit details or private data.
+Use this repository's [private vulnerability report](https://github.com/ismoss/mossread/security/advisories/new) when available. If private reporting is disabled, open an issue asking for a private contact channel without posting exploit details or private data.
 
 Include the affected commit or release, component, hardware revision if known, impact, and safe reproduction details. Remove credentials, WiFi network names if sensitive, LAN addresses, full device identifiers, book content, backups, and personal data. Do not publish vulnerability details in issues or pull requests before a fix is available.
 

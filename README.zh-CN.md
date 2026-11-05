@@ -1,10 +1,10 @@
 # mossread · 小纸 Pico（RDP-G01-W）
 
-> **独立下游二改，非官方版本。** 本仓库由 **ismoss** 维护，是 [kiikoread（wegooo-cell/read-pico-reader）](https://github.com/wegooo-cell/read-pico-reader) 的下游分支，基线为上游 **0.3.3-rc100**；kiikoread 又基于 [MindReset 官方示例固件](https://github.com/MindReset/read_pico_firmware)。本二改与 MindReset、kiikoread 上游均无隶属或背书关系；上游的官网、更新日志、商店、支持渠道和 issue 区不覆盖本二改。
+> **mossread 是给小纸 Pico（RDP-G01-W）做的社区阅读固件。** 本仓库由 **ismoss** 维护，以 [kiikoread（wegooo-cell/read-pico-reader）](https://github.com/wegooo-cell/read-pico-reader) 的 **0.3.3-rc100** 为技术基座（kiikoread 又基于 [MindReset 官方示例固件](https://github.com/MindReset/read_pico_firmware)），自此独立演进：产品名、版本线、更新源、界面品牌和发布节奏都归 **mossread**。与 MindReset、kiikoread 上游无隶属或背书关系；上游官网、更新日志、商店与 issue 区不覆盖本固件。
 
 > **许可提醒。** 上游 rc93 及以前为 Apache-2.0；上游 rc94 起明确标注的新增原创内容适用[个人学习许可](licenses/kiikoread-Personal-Study-1.0.txt)（禁止商用）。本二改新增文件按 Apache-2.0 发布，但**组合固件仍包含上游的非商用材料**，请仅用于个人学习与自用，不要商用或售卖。完整范围见 [LICENSE](LICENSE)。
 
-**当前版本**：`0.3.3-rc100-mod64`（2026-10-30） · **更新源**：[update.json](https://ismoss.github.io/read-pico-reader/update.json) · **设备**：小纸 Pico RDP-G01-W（ESP32-S3 / 16 MB Flash / 684×1216）
+**当前版本**：以线上 [update.json](https://ismoss.github.io/mossread/update.json) 为准（2026-11-05 线上为 `0.3.3-rc100-mod118`） · **更新源**：`ismoss.github.io/mossread` · **设备**：小纸 Pico RDP-G01-W（ESP32-S3 / 16 MB Flash / 684×1216）
 
 [安装](#三安装与回退) · [改了什么](#四二改做了什么) · [版本线](#五版本线) · [构建](#七从源码构建) · [许可与致谢](#九许可致谢与边界) · [English](README.md)
 
@@ -31,27 +31,42 @@
 
 | 项 | 上游 kiikoread | 本二改 |
 | :--- | :--- | :--- |
-| 基线 | `0.3.3-rc100` | 同一份源码树 + 二改补丁 |
-| 版本号 | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`，例如 `0.3.3-rc100-mod64` |
-| 更新源 | kiikoread.com / 上游 GitHub Pages | 自建 `ismoss.github.io/read-pico-reader`，不跟随上游 |
-| 支持 | 上游 issue / 官网 | 本仓库 issue；上游不负责二改 |
-| 许可 | Apache-2.0 + rc94 起个人学习许可 | 上游许可原样保留；二改新增文件 Apache-2.0 |
+| 基线 | `0.3.3-rc100` | 同源起家，之后独立演进（mod 线） |
+| 版本号 | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`，例如 `0.3.3-rc100-mod118` |
+| 更新源 | kiikoread.com / 上游 GitHub Pages | 自建 `ismoss.github.io/mossread`，不跟随上游 |
+| 支持 | 上游 issue / 官网 | 本仓库 issue；上游不负责本固件 |
+| 许可 | Apache-2.0 + rc94 起个人学习许可 | 上游许可原样保留；本固件新增文件 Apache-2.0 |
+
+### 上游 rc100 → rc105：他们改了什么，我们拿什么（2026-11-05 核对）
+
+上游在 rc102–rc105 之间把仓库重构成 Pico + Metalio S31 双板结构（`boards/`），并合入 PR55–75。对 Pico 有实际意义的变更与我们的取舍：
+
+| 版本 | 上游做了什么 | 我们的取舍 |
+| :--- | :--- | :--- |
+| rc102 | 液态玻璃书架、无配置默认外观、英文 TeX 断词与词间对齐、TXT 分卷目录/快速选卷、文件页看图设壁纸 | 液态玻璃书架已由 mod118 自研；词间对齐 rc100 已有；断词与分卷按需再做 |
+| rc103 | 全像素 GL16 翻页、静态 WebP、渐进 JPEG 全解码、EPUB EOCD 尾标记与 EPUB3 无 toc 兼容、文件管理套件、首次引导/系统中英文切换 | WebP（mod84）、渐进 JPEG（mod85）、文件管理（mod88–93）都是我们自己做的；EPUB 两条兼容修复值得拿（小、冲突≈0） |
+| rc104 | 书架管理对齐文件页、阅读状态栏/工具栏回归修复、EPUB 脚注弹窗、GIF 首帧、JPEG 解码兜底、双击插图缩放、水波纹擦白/补黑、深睡单击续读 | 书架管理与深睡续读我们已有；脚注/GIF/JPEG 兜底值得拿；水波纹擦白要真机 A/B |
+| rc105 | 内建字库扩到 7668 字（16 级灰阶补字、逐字墨量校正）、默认全屏设置、阅读线跟随文字/整行、题头工具栏悬浮不重排、局部刷新精确到像素 | 字库是最大收益（先逻辑 +6KB，后资源 +469KB）；默认全屏/阅读线便宜可拿；悬浮重排风险高 |
+
+**按性价比的拿取顺序**：① 局部刷新精确像素边界（零冲突，修进度条被误驱动）② EPUB 两类打不开 ③ GIF 首帧 ④ JPEG 小平面兜底 ⑤ 书架批量读进度（每本少一次 NVS 打开）⑥ 字体缺字回退 ⑦ 相数上限 40→64（1 行）⑧ 默认全屏 / 阅读线整行。
+
+**明确不拿**：书架管理重构（我们已有等价且冲突最大）、题头/状态栏两条（上游重构时自己弄丢又补回，我们从未丢）、翻页排除信息栏（与我们“页脚并进同一次 GL16”的策略相反）、备份文件改名（违反本仓规则）。
 
 ### 分支
 
 | 分支 | 用途 |
 | :--- | :--- |
-| `main` | 上游源码镜像 + 本二改的门面 README；**不含**二改代码 |
-| `mod/glass-dock-lockoff` | 二改源码、CI、OTA feed 发布；日常更新看这里 |
-| `pr/*` | 对上游同样有价值的修复，单独整理成可提交上游的 PR，不混入二改私货 |
+| `main` | 上游源码镜像 + 本固件的门面 README；**不含**固件代码 |
+| `mod/glass-dock-lockoff` | 固件源码、CI、OTA feed 发布；日常更新看这里 |
+| `pr/*` | 对上游同样有价值的修复，单独整理成可提交上游的 PR，不混入本固件的私有改动 |
 
-> 为什么更新源要自建：官方源里更高的版本号会把二改顶掉，设备一联网就被“升级”回上游，横屏锁屏、DNS、远程监看全部消失。自建 feed 从根上避免这件事；代价是二改设备**不会**再收到官方更新，回退需要手动刷机（见下一节）。
+> 为什么更新源要自建：官方源里更高的版本号会把本固件顶掉，设备一联网就被“升级”回上游，横屏锁屏、DNS、远程监看全部消失。自建 feed 从根上避免这件事；代价是本固件设备**不会**再收到官方更新，回退需要手动刷机（见下一节）。
 
 ### 刻意没动的东西
 
 - 分区表、双槽布局、OTA 数据分区：不动，TF 卡升级和配置备份继续兼容。
 - 书籍格式与解析规则：EPUB/TXT 的既有上限、字体缓存、阅读进度格式保持原样。
-- 界面品牌：固件当前显示为 mossread；数据、分区、协议和上游兼容标识保持不变。
+- 界面品牌：固件显示为 **mossread**；数据、分区、协议和上游兼容标识保持不变。
 - 数据上报：没有账号、没有遥测、没有云端书架。
 
 ## 三、安装与回退
@@ -69,13 +84,13 @@
 
 ### 3.2 从 kiikoread 升级（推荐）
 
-1. 打开 [update.json](https://ismoss.github.io/read-pico-reader/update.json)，取 `version` 与 `url`；当前为 `0.3.3-rc100-mod64`。
+1. 打开 [update.json](https://ismoss.github.io/mossread/update.json)，取 `version` 与 `url`；2026-11-05 线上为 `0.3.3-rc100-mod118`。
 2. 下载对应的 `Pico-update-*.bin`，**改名为 `Pico-update.bin`**，放到 TF 卡根目录。
 3. 设备上进入 **设置 → 升级和恢复 → 系统升级 → TF 卡升级**，确认后等待写入与重启。
 4. 重启后进入 **设置 → 升级和恢复 → 系统升级**，应能看到自建 feed 的版本信息；以后可直接联网检查更新。
 
 直接下载当前版本：
-<https://ismoss.github.io/read-pico-reader/Pico-update-0.3.3-rc100-mod64.bin>
+<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod118.bin>
 
 > 文件名 `Pico-update.bin` 是上游固件约定的兼容名，不要改；每次升级覆盖同一路径即可。
 
@@ -221,7 +236,7 @@
 - 远程监看是局域网工具，默认关闭，无公网鉴权/加密方案；不要端口转发到公网。
 - TF 卡仅 FAT16/FAT32，未启用 exFAT；容量大不代表一定兼容。
 - 继承上游的 EPUB 限制：单个 XHTML 4 MB、单张解压图片 8 MB、ZIP 条目/章节各 8192 项。
-- 二改整条线（mod1–mod64）的真机走查仍在进行；CI 绿不等于每一项都在实机验收过。
+- 本固件整条线（mod1–mod118）的真机走查仍在进行；CI 绿不等于每一项都在实机验收过。
 
 ## 五、版本线
 
@@ -230,10 +245,11 @@
 | 起步 | mod1–mod19 | fork 发布线、版本号方案、自建 OTA、双仓与工程规范；书内横屏、书架分片扫描 + 索引、字体系统；DNS、WiFi 已知网络、远程监看初版、双模式传书 |
 | 网络与监看 | mod20–mod26 | 自动换网真修复、自动连接开关、升级页指示归位、远程监看破图/缩放/连接数修复 |
 | 横屏锁屏、更新链路与改名 | mod27–mod64 | 监看入口搬家 + 一次性 RAM 密钥、DNS 默认跟随路由器、自动连接跨升级继承、编译告警清零；字体真因修复；横屏票根/键盘/拼贴/壁纸槽/透明书封；壁纸预览；传书语义；更新页速率/重定向/慢网；监看四位密码与触摸过期；GC16 锁屏定稿；透明书封开机缓存守卫；审查加固（横屏只认两个枚举、书封边界、OTA 清单 90s、主动断开跨页保持）；复位/PMU 键证据区分真实按键与 OTA/复位启动；首键直达密码时不再重复刷锁面，透明书封启动不再先闪白圆锁 |
+| 阅读方向、文件管理与划线 | mod65–mod118 | 四档翻页、壁纸方向与 cover 旋转；自适应阅读方向（四向含 180°、绝对姿态、锁定持久化、触摸/手势方向纳入翻转）；可配置阅读手势；阅读电源键轻点翻页；WebP 与渐进 JPEG 高清；内存策略（离书架归还封面）；深睡小锁脸 + 单击续读；文件管理套件（排序/递归搜索/书籍统计/列表网格/多选批量删除/批量移动）；阅读划线（面板/下划线/记行/选段/字级/标签/笔记/导出 md/按住拖选）；Markdown 阅读与轻量渲染；锁屏极简时钟；书架液态玻璃 |
 
 - 逐条用户可见变化：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 - 批次、取舍、已否决项：[docs/ROADMAP.md](docs/ROADMAP.md)
-- 线上当前版本：[update.json](https://ismoss.github.io/read-pico-reader/update.json)
+- 线上当前版本：[update.json](https://ismoss.github.io/mossread/update.json)
 
 ## 六、验证状态
 
@@ -242,7 +258,7 @@
 | 编译 | GitHub Actions，ESP-IDF v6.1，真机 `sdkconfig.defaults` 时序 | 通过；mod30 起零告警 |
 | 宿主回归 | 显示/阅读/锁屏/书架/EPUB/设置/OTA TLS/DNS/监看 BMP 等测试 | 通过（CI 每次 push） |
 | 发布 feed | 发布后校验 update.json、镜像大小、SHA-256、线上可取 | 通过（每次 dispatch） |
-| 真机走查 | mod1–mod64 逐项人工验收 | **进行中**；个别修复已在 changelog 标注真机确认 |
+| 真机走查 | mod1–mod118 逐项人工验收 | **进行中**；个别修复已在 changelog 标注真机确认 |
 
 我们尽量把“已验证”和“只是编译过”分开写。看到某条没有真机标注，就当作“代码级/CI 级证据”，不要当成实机承诺。
 
@@ -253,7 +269,7 @@
 ```sh
 python3 tools/prepare_tls_bundle.py "$IDF_PATH"
 idf.py set-target esp32s3
-PICO_PROJECT_VER=0.3.3-rc100-mod64 idf.py build
+PICO_PROJECT_VER=0.3.3-rc100-mod118 idf.py build
 ```
 
 - `sdkconfig.defaults` 是本开发板的 Flash/PSRAM 时序；`sdkconfig.ci` 只用于编译检查，不要把 CI 时序当产品默认。
@@ -298,7 +314,7 @@ CI 与发布：
 ### 致谢
 
 - [MindReset](https://dot.mindreset.tech/docs/read_0)：硬件、官方示例固件与文档。
-- [Kiiko厂长 / wegooo-cell](https://github.com/wegooo-cell/read-pico-reader) 与 kiikoread 贡献者：本二改的全部基础。
+- [Kiiko厂长 / wegooo-cell](https://github.com/wegooo-cell/read-pico-reader) 与 kiikoread 贡献者：本固件的全部技术基础。
 - 上游第三方组件与字体作者：Lucide、epdiy、pypinyin、Noto。
 - 小纸 Pico 社区的其他系统作者：他们的公开实现和讨论让很多问题更容易定位。
 
@@ -311,10 +327,10 @@ CI 与发布：
 ## 十、反馈与礼仪
 
 - **报 bug 请带**：版本号（`设置 → 升级和恢复 → 系统升级` 里的当前版本，或 update.json）、设备型号、复现步骤、是否 TF/OTA 安装、串口日志或照片；不要贴 WiFi 密码、设备密钥、完整配置备份。
-- **不要**把二改包当官方包转发，也不要用“官方”“MindReset 出品”之类措辞；二改就是二改。
+- **不要**把本固件包当官方包转发，也不要用“官方”“MindReset 出品”之类措辞；它是 mossread。
 - **不要**去掉版权头、许可文件和致谢再分发；更不要售卖。
-- 对上游同样有价值的修复，我们尽量单独整理成 `pr/*` 分支提交上游，而不是把二改私货混进上游 PR；上游是否接受由上游决定。
-- 其他社区系统（if-ink OS、Take Easy、PageRest、Pico Page、CrossMux 系等）各有取舍，本二改只是其中一种选择；借鉴思路时请遵守对方许可并注明来源。
+- 对上游同样有价值的修复，我们尽量单独整理成 `pr/*` 分支提交上游，而不是把私有改动混进上游 PR；上游是否接受由上游决定。
+- 其他社区系统（if-ink OS、Take Easy、PageRest、Pico Page、CrossMux 系等）各有取舍，mossread 只是其中一种选择；借鉴思路时请遵守对方许可并注明来源。
 
 ## 附录 A：继承的上游能力
 
@@ -330,14 +346,14 @@ CI 与发布：
 
 | 用途 | 地址 |
 | :--- | :--- |
-| 二改更新清单 | <https://ismoss.github.io/read-pico-reader/update.json> |
-| 二改 DNS 在线列表 | <https://ismoss.github.io/read-pico-reader/dns.json> |
-| 二改源码（本分支） | <https://github.com/ismoss/read-pico-reader/tree/mod/glass-dock-lockoff> |
+| 固件更新清单 | <https://ismoss.github.io/mossread/update.json> |
+| 固件 DNS 在线列表 | <https://ismoss.github.io/mossread/dns.json> |
+| 固件源码（本分支） | <https://github.com/ismoss/mossread/tree/mod/glass-dock-lockoff> |
 | 上游 kiikoread | <https://github.com/wegooo-cell/read-pico-reader> |
 | 官方网页刷机（回退用） | <https://kiikoread.com/#flash-action> |
 | 官方设备文档 | <https://dot.mindreset.tech/docs/read_0> |
-| 二改更新日志 | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
-| 二改路线图 | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| 固件更新日志 | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
+| 固件路线图 | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | 许可范围 | [LICENSE](LICENSE) |
 | 第三方许可 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |
 | 隐私说明 | [PRIVACY.md](PRIVACY.md) |
