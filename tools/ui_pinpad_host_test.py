@@ -121,7 +121,7 @@ int main(int argc,char **argv){
  subprocess.run(flags+['-c',str(ROOT/'main/font/ttf_font.c'),'-o',str(p/'ttf.o')],check=True)
  # Keep section garbage collection portable: macOS uses dead_strip, ELF uses gc-sections.
  gc_flag='-Wl,-dead_strip' if sys.platform=='darwin' else '-Wl,--gc-sections'
- subprocess.run(flags+[str(p/'test.c'),str(p/'assets.c'),str(p/'ttf.o'),str(ROOT/'main/ui/ui_gesture.c'),str(ROOT/'main/ui/ui_image_dither.c'),gc_flag,'-lm','-o',str(p/'test')],check=True)
+ subprocess.run(flags+[str(p/'test.c'),str(p/'assets.c'),str(p/'ttf.o'),str(ROOT/'main/ui/ui_gesture.c'),str(ROOT/'main/ui/ui_image_dither.c'),str(ROOT/'tools/ui_gesture_stubs/ui_hanzi_stub.c'),gc_flag,'-lm','-o',str(p/'test')],check=True)
  if args.background:
   from PIL import Image
   b=Image.open(args.background).convert('L');assert b.size==(684,1216);(p/'bg.raw').write_bytes(b.tobytes())

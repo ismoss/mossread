@@ -116,6 +116,6 @@ with tempfile.TemporaryDirectory(prefix='pico-vertical-number-') as directory:
              '-I' + str(work), '-I' + str(ROOT / 'main/font'), '-I' + str(ROOT / 'main/ui'),
              '-I' + str(ROOT / 'main'), '-I' + str(ROOT / 'tools/ui_gesture_stubs')]
     subprocess.run(flags + [str(work / 'test.c'), str(work / 'assets.c'),
-                            str(ROOT / 'main/font/ttf_font.c'), '-lm',
+                            str(ROOT / 'main/font/ttf_font.c'), str(ROOT / 'tools/ui_gesture_stubs/ui_hanzi_stub.c'), '-lm',
                             '-o', str(work / 'test')], check=True)
     subprocess.run([str(work / 'test')], check=True)

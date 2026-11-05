@@ -248,7 +248,7 @@ int main(int argc,char **argv){
     subprocess.run(flags+['-c',str(ROOT/'main/font/ttf_font.c'),'-o',str(work/'ttf.o')],check=True)
     gc='-Wl,-dead_strip' if os.uname().sysname=='Darwin' else '-Wl,--gc-sections'
     subprocess.run(flags+[f'-DBOOK_LOCK_CACHE_PARENT="{work}/cache"',str(work/'test.c'),str(work/'assets.c'),
-                          str(work/'ttf.o'),str(ROOT/'main/ui/ui_image_dither.c'),'-lm',gc,'-o',str(work/'test')],check=True)
+                          str(work/'ttf.o'),str(ROOT/'main/ui/ui_image_dither.c'),str(ROOT/'tools/ui_gesture_stubs/ui_hanzi_stub.c'),'-lm',gc,'-o',str(work/'test')],check=True)
     subprocess.run([str(work/'test'),str(work),str(args.font.resolve()),str(work/'frame.raw')],check=True)
     if args.output:
         from PIL import Image
