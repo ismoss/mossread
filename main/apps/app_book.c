@@ -1235,6 +1235,15 @@ static bool cover_favorite_needs_white_edge(const uint8_t *gray, EpdRect image, 
 static void draw_shelf_cover(uint8_t* fb, EpdRect card, int row, const char* name, bool favorite) {
     EpdRect image = shelf_cover_image(row);
     image.y += card.y - row_rect(row).y;
+    // 液态玻璃：每本封面下垫一块圆角"玻璃"底板（柔和阴影 + 高光 + 细描边）。
+    // Liquid glass: a rounded translucent tile behind each cover (soft shadow + highlight + hairline).
+    if (app_settings_shelf_style() == 6) {
+        EpdRect g = {image.x - 7, image.y - 7, image.width + 14, image.height + 14};
+        ui_fill_round_rect(fb, (EpdRect){g.x + 3, g.y + 5, g.width, g.height}, 16, 0xd8);
+        ui_fill_round_rect(fb, g, 16, 0xef);
+        ui_draw_control_frame(fb, g, 16, 0x98);
+        ui_fill_rect_fast((EpdRect){g.x + 12, g.y + 3, g.width - 24, 2}, 0xfb, fb);
+    }
     const bool artwork = shelf_cover_frame_ready();
     ui_fill_rect_fast(image, UI_GRAY_LIGHT, fb);
     if (artwork && app_settings_main_fast_refresh() && s_view==SHELF && fast_cover_matches(row,image)) {

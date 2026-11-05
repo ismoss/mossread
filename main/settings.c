@@ -474,7 +474,7 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_BOOK_MARGIN, &margin) == ESP_OK && margin <= 60)
         s_book_margin = margin > 48 ? 48 : margin;
     uint8_t shelf_style = 2;
-    if (nvs_get_u8(h, NVS_KEY_SHELF_STYLE, &shelf_style) == ESP_OK && shelf_style >= 1 && shelf_style <= 5)
+    if (nvs_get_u8(h, NVS_KEY_SHELF_STYLE, &shelf_style) == ESP_OK && shelf_style >= 1 && shelf_style <= 6)
         s_shelf_style = shelf_style == 3 || shelf_style == 4 ? 2 : shelf_style;
     uint8_t shelf_v22 = 0;
     bool migrate_shelf = nvs_get_u8(h, NVS_KEY_SHELF_V22, &shelf_v22) != ESP_OK || shelf_v22 != 1;
@@ -1112,7 +1112,7 @@ void app_settings_set_book_paragraph_spacing(uint8_t percent) {
 }
 uint8_t app_settings_shelf_style(void) { return s_shelf_style; }
 void app_settings_set_shelf_style(uint8_t style) {
-    if (style < 1 || style > 5) return;
+    if (style < 1 || style > 6) return;
     if (style == 3 || style == 4) style = 2;
     if (s_shelf_style == style) return;
     s_shelf_style = style;

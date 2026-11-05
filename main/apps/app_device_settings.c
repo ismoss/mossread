@@ -1108,13 +1108,13 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
         ui_nav_back(fb, 36, 79);
         ui_text_vc(fb, 342, 107, 34, "书架样式", EPD_DRAW_ALIGN_CENTER, false);
         ui_text(fb, 36, 207, 23, "选择书架外观与排列方式", EPD_DRAW_ALIGN_LEFT, false);
-        static const char *const styles[] = {"深色书轨", "亚克力书架", "列表书架"};
-        static const char *const descriptions[] = {"每页 9 本", "每页 9 本", "作者与进度 · 每页 4 本"};
-        for (int i = 0; i < 3; ++i) {
+        static const char *const styles[] = {"深色书轨", "亚克力书架", "列表书架", "液态玻璃"};
+        static const char *const descriptions[] = {"每页 9 本", "每页 9 本", "作者与进度 · 每页 4 本", "玻璃拟态 · 每页 9 本"};
+        for (int i = 0; i < 4; ++i) {
             int y = 263 + i * 253 - s_style_scroll;
             if (y + 230 < 242 || y >= settings_viewport_end()) continue;
             EpdRect card = {36, y, 612, 230};
-            int style = i == 2 ? 5 : i + 1;
+            int style = i == 3 ? 6 : i == 2 ? 5 : i + 1;
             bool active = app_settings_shelf_style() == style;
             settings_card(fb, card, 24, active ? 0xd0 : UI_GRAY_WHITE,
                           active ? 0x58 : 0x70);
@@ -1815,7 +1815,7 @@ static void render_content(app_ctx_t *ctx, uint8_t *fb) {
                   display_icons,display_labels,display_values,SETTINGS_DISPLAY_ROWS);
     snprintf(signature,sizeof(signature),"%s",app_settings_status_signature()[0]?app_settings_status_signature():"未设置");
     const char *personal_labels[]={"书架样式","锁屏样式","锁屏密码","状态栏签名","阅读手势"};
-    const char *personal_values[]={app_settings_shelf_style()==5?"列表书架":app_settings_shelf_style()==1?"深色书轨":"亚克力书架",
+    const char *personal_values[]={app_settings_shelf_style()==5?"列表书架":app_settings_shelf_style()==6?"液态玻璃":app_settings_shelf_style()==1?"深色书轨":"亚克力书架",
         app_settings_lock_style()==3?"透明书封":app_settings_lock_style()==2?"书架拼贴":app_settings_lock_style()==1?"壁纸":"阅读票根",
         lock_pin_enabled()?"已开启":"已关闭",signature,"点击设置"};
     const int personal_icons[]={4,5,16,10,10};
@@ -2489,9 +2489,9 @@ static app_redraw_t on_gesture(app_ctx_t *ctx, const ui_gesture_event_t *ev) {
     }
     if (s_page == SETTINGS_SHELF_STYLE) {
         if (y < 190) { s_page = SETTINGS_MAIN; (void)read_pico_transfer_get_saved_wifi(s_main_wifi,&s_main_wifi_saved); settings_prepare_profile(); return APP_REDRAW_PAGE; }
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < 4; ++i) {
             if (y >= 263 + i * 253 - s_style_scroll && y < 493 + i * 253 - s_style_scroll && y < settings_viewport_end()) {
-                app_settings_set_shelf_style((uint8_t)(i == 2 ? 5 : i + 1));
+                app_settings_set_shelf_style((uint8_t)(i == 3 ? 6 : i == 2 ? 5 : i + 1));
                 s_page = SETTINGS_MAIN;
                 return APP_REDRAW_PAGE;
             }
