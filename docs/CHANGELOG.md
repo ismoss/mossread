@@ -1,5 +1,10 @@
 # 版本变更 / Changelog
 
+## 未发布 · 2026-11-05 · 书架首屏提速与相数上限
+
+- 书架进度按 64 本一批读取（上游 `1c022a4`）：每本少一次 `nvs_open`/`nvs_close`；元数据缓存复用目录扫描已核验的 size/mtime，不再二次 `stat`；FAT 已标成普通文件的条目按 `d_type` 先排除非图书。宿主夹具只桩逐本接口时自动回退逐本路径（批量接口是弱符号）。
+- 翻页/水波纹相数上限 40→64（上游 `165c0f7`）：为以后 53 相水波纹（擦白+重推黑）铺路；相位 LUT 仍在 PSRAM，不占内部 RAM。
+
 ## 0.3.3-rc100-mod119 / 2026-11-05 · 改名 mossread，吸收上游 rc105 可用改进
 
 - GitHub 仓库 `ismoss/read-pico-reader` → `ismoss/mossread`，私有开发仓 → `ismoss/mossread-dev`，本地 clone 目录改为 `mossread/`。

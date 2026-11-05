@@ -5486,6 +5486,9 @@ static void scan_dir_chunk(int64_t deadline) {
         char path[BOOK_STORE_PATH_MAX];
         int len = snprintf(path, sizeof(path), "%s/%s", s_scan.frames[s_scan.depth].path, ent->d_name);
         if (len < 0 || (size_t)len >= sizeof(path)) { s_scan.skipped = true; continue; }
+        // FAT 已给出的普通文件类型可先排除非图书；未知类型仍 stat，保留子目录遍历。
+        // Skip known regular non-books before stat; unknown types are still stat'ed so directories stay visible.
+        if (ent->d_type == DT_REG && !book_file_path_supported(path)) continue;
         struct stat st;
         if (stat(path, &st) != 0) { s_scan.unreadable = true; continue; }
         if (S_ISDIR(st.st_mode)) {
@@ -5520,18 +5523,18 @@ static void scan_dir_chunk(int64_t deadline) {
             char author[sizeof(item->author)] = {0};
             // Listing must stay cheap and bounded: never parse every EPUB before
             // the shelf is first painted. Opening a book populates this cache.
-            // 首屏列书只读已有元数据缓存，不在封面出现前逐本解析 EPUB。
-            if (book_epub_metadata_cached(item->path, title, sizeof(title), author, sizeof(author)) == ESP_OK)
+            // 复用目录扫描已核验的大小/修改时间读同一份元数据缓存，不再二次 stat 或解析 EPUB。
+            // Reuse the directory-validated size/mtime for the same metadata cache without another
+            // stat or an EPUB parse.
+            if (book_epub_metadata_cached_for_file(item->path, (uint64_t)st.st_size, (int64_t)st.st_mtime,
+                                                   title, sizeof(title), author, sizeof(author)) == ESP_OK)
                 copy_text(item->author, sizeof(item->author), author);
         }
         item->search_match = read_pico_search_match(item->name, s_query);
         item->size = st.st_size;
         item->is_flash = s_scan.is_flash;
-        book_progress_t p;
-        item->has_progress = book_progress_load(item->path, item->size, &p);
-        item->pct = item->has_progress ? p.pct : 0;
-        item->chapter = item->has_progress ? p.chapter : 0;
-        item->recent = item->has_progress ? p.last_open_s : 0;
+        // 进度在扫描收尾时按 64 本一批读取；扫描中途不做逐本 NVS 会话。
+        // Progress is read in 64-book batches at finalize; no per-book NVS session during the walk.
         item->favorite = s_scan.favorites && favorite_read_handle(s_scan.favorites, item->path);
         scan_commit(candidate);
     }
@@ -5585,7 +5588,8 @@ static bool shelf_backfill_visit(const char* path, const book_progress_t* progre
     if (ext && !strcasecmp(ext, ".epub") && pico_boot_asset_allowed(item->path)) {
         char title[sizeof(item->name)] = {0};
         char author[sizeof(item->author)] = {0};
-        if (book_epub_metadata_cached(item->path, title, sizeof(title), author, sizeof(author)) == ESP_OK)
+        if (book_epub_metadata_cached_for_file(item->path, (uint64_t)st.st_size, (int64_t)st.st_mtime,
+                                              title, sizeof(title), author, sizeof(author)) == ESP_OK)
             copy_text(item->author, sizeof(item->author), author);
     }
     item->size = (uint32_t)st.st_size;
@@ -5701,6 +5705,40 @@ static app_redraw_t shelf_scan_chunk(app_ctx_t *ctx) {
     shelf_scan_finalize(ctx);
     return APP_REDRAW_PAGE;
 }
+// 每 64 本共用一次只读进度库会话；工作区不足或会话失败仍回退逐本读取。
+// One read-only progress session per 64 books; scratch/OOM/session failures fall back per book.
+static void shelf_progress_load_batched(void) {
+    if (!s_count) return;
+    book_progress_query_t *queries = heap_caps_calloc(BOOK_PROGRESS_BATCH_MAX, sizeof(*queries),
+                                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    for (int first = 0; first < s_count; first += BOOK_PROGRESS_BATCH_MAX) {
+        size_t count = (size_t)(s_count - first);
+        if (count > BOOK_PROGRESS_BATCH_MAX) count = BOOK_PROGRESS_BATCH_MAX;
+        bool batched = false;
+        if (queries) {
+            for (size_t j = 0; j < count; ++j) {
+                const shelf_entry_t *item = &s_shelf[first + (int)j];
+                queries[j].path = item->removed ? NULL : item->path;
+                queries[j].file_size = item->size;
+            }
+            batched = book_progress_load_batch && book_progress_load_batch(queries, count);
+        }
+        for (size_t j = 0; j < count; ++j) {
+            shelf_entry_t *item = &s_shelf[first + (int)j];
+            if (item->removed) continue;
+            book_progress_t value = {0};
+            const bool found = batched ? queries[j].found
+                                       : book_progress_load(item->path, item->size, &value);
+            if (batched && found) value = queries[j].progress;
+            item->has_progress = found;
+            item->pct = found ? value.pct : 0;
+            item->chapter = found ? value.chapter : 0;
+            item->recent = found ? value.last_open_s : 0;
+        }
+    }
+    free(queries);
+}
+
 static void shelf_scan_finalize(app_ctx_t *ctx) {
     s_scan.active = false;
     s_message[0] = 0;
@@ -5738,6 +5776,7 @@ static void shelf_scan_finalize(app_ctx_t *ctx) {
     // 补齐书根目录之外读过的书；显式移出书架的除外。
     // Backfill books read outside the roots, minus the ones removed from the shelf.
     (void)shelf_backfill_read_books(&s_scan.truncated);
+    shelf_progress_load_batched();
     shelf_categories_recount();
     sort_shelf(ctx);
     if (s_view==SHELF) shelf_category_restore(ctx);
