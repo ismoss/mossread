@@ -60,7 +60,9 @@ Upstream restructured the repository into a Pico + Metalio S31 two-board tree (`
 
 **Pulled into `0.3.3-rc100-mod119`**: 1) exact-bounds partial refresh, 2) the two EPUB open failures, 3) inline GIF first frame, 4) JPEG fallback, 5) missing-glyph fallback (logic stage; the supplement assets are still monochrome, with the 16-level PIF4 swap reserved for a later release).
 
-**Candidates for later**: batched shelf progress (one NVS open instead of one per book), turn phase cap 40→64, Default fullscreen, and the reading guide's text/full-row switch.
+**In the tree, awaiting the next release**: batched shelf progress (one NVS open instead of one per book, `1c022a4`) and the turn phase cap 40→64 (`165c0f7`, LUT stays in PSRAM).
+
+**Candidates for later**: Default fullscreen and the reading guide's text/full-row switch.
 
 **Not taking for now**: the shelf-management re-architecture (we already have an equivalent implementation, and the change surface is large), the two header/status-bar adjustments (our current behaviour already matches, so there is nothing to port), per-turn metadata exclusion (differs from this project's fused-footer refresh strategy), and the backup-file rename (would break existing backup compatibility).
 
