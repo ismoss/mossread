@@ -491,6 +491,34 @@ static bool line_append(size_t at, const char *text, size_t bytes) {
     s_line[at + bytes] = 0;
     return true;
 }
+/* ---- 西文词界（移植自上游 rc105 book_layout.c）----
+ * 上游把英文按"词"而不是"字"当折行单位：一行装不下时先回退到词首，而不是把单词
+ * 从中间切断。汉字逐字可断，不受影响；竖排不参与。
+ * Upstream treats a Latin run as a word, not a run of glyphs: when it does not fit, roll back
+ * to the word start instead of cutting the word in half. CJK breaks per glyph and is untouched,
+ * and vertical setting does not take part.
+ * 本阶段未接入 Liang 软连字符表（english_hyphen_patterns.h，135 KB flash），超长单词
+ * 仍按字硬断；两端对齐会把回退留下的空隙摊到字间。
+ * This stage does not carry the Liang soft-hyphen table (135 KB of flash), so an over-long
+ * token still breaks per glyph; the existing justification spreads the leftover slack. */
+static bool latin_letter(uint32_t cp) {
+    return (cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z') ||
+        (cp >= 0xc0 && cp <= 0xd6) || (cp >= 0xd8 && cp <= 0xf6) ||
+        (cp >= 0xf8 && cp <= 0x2af) || (cp >= 0x1e00 && cp <= 0x1eff);
+}
+static bool latin_part(uint32_t cp) {
+    return latin_letter(cp) || (cp >= '0' && cp <= '9') || (cp >= 0x300 && cp <= 0x36f);
+}
+// 词内撇号/不换行连字符随词移动，只有前后都是字母时才算同一词。
+// An in-word apostrophe or non-breaking hyphen stays with the token only between letters.
+static bool latin_member(uint32_t cp, uint32_t previous, size_t at, size_t n, size_t limit) {
+    if (latin_part(cp)) return true;
+    if (cp != '\'' && cp != 0x2019 && cp != 0x2011 && cp != 0xa0 && cp != 0x202f) return false;
+    if (!latin_part(previous) || at + n >= limit) return false;
+    size_t size = codepoint_size(s_text + at + n, limit - at - n);
+    return size && latin_part(codepoint_value(s_text + at + n, size));
+}
+
 static bool take_line(size_t off, int advance_limit, int hang_margin, size_t* next,
                       bool* paragraph_end, int* px, bool* heading,
                       int* line_width, int* indent, uint8_t* align,
@@ -546,6 +574,11 @@ static bool take_line(size_t off, int advance_limit, int hang_margin, size_t* ne
     int available = advance_limit - *indent;
     size_t end = visible_off;
     size_t last_start = visible_off;
+    // 当前西文词的起点，以及"断在词首"这一候选的落点与行宽。
+    // Start of the current Latin word, plus the rollback candidate (offset and width).
+    size_t wrap_end = visible_off;
+    int64_t wrap_width = 0;
+    bool previous_word = false;
     uint32_t last_cp = 0;
     int64_t width = 0;
     int64_t last_width = 0;
@@ -556,6 +589,13 @@ static bool take_line(size_t off, int advance_limit, int hang_margin, size_t* ne
         size_t n = codepoint_size(s_text + end, s_len - end);
         if (!n) return false;
         uint32_t cp = codepoint_value(s_text + end, n);
+        // 词首出现时记下回退点：断在这里等于"整词换行"，不会把单词腰斩。
+        // Record the rollback point at a word start: breaking here moves the whole word down.
+        bool word = !s_vertical && latin_member(cp, last_cp, end, n, limit);
+        if (word && !previous_word) {
+            wrap_end = end;
+            wrap_width = width;
+        }
         // 字体逐字取整后累加 advance；单字测量避免反复扫描整行前缀。
         // Font advances are rounded per glyph and summed; measure each glyph once instead of every prefix.
         char glyph[5];
@@ -570,6 +610,17 @@ static bool take_line(size_t off, int advance_limit, int hang_margin, size_t* ne
         if (candidate < 0) return false;
         if (candidate > available) {
             if (end == visible_off) return false;
+            // 西文词装不下就整词换行：回退到词首，避免把单词从中间切断；词本身长于
+            // 整行（wrap_end 还在行首）时退回原有的逐字硬断，否则会不前进。
+            // A Latin word that does not fit moves down whole; when the word itself is wider
+            // than the line the rollback point is still the line start, so the old per-glyph
+            // break stays as the last resort (otherwise the wrap would not advance).
+            if (!s_vertical && word && wrap_end > visible_off) {
+                end = wrap_end;
+                width = wrap_width;
+                s_line[end - visible_off] = 0;
+                break;
+            }
             // 优先让行尾正文对齐，再允许右标点小幅悬挂到留白；超出安全宽度才回退前一字。
             // Align the text edge first, hang a closing mark slightly into the margin, then roll back only if needed.
             if (prohibited_line_start(cp)) {
@@ -621,6 +672,7 @@ static bool take_line(size_t off, int advance_limit, int hang_margin, size_t* ne
         ++glyph_count;
         last_start = end;
         last_cp = cp;
+        previous_word = word;
         if (!line_append(end - visible_off, glyph, n)) return false;
         end += n;
     }
