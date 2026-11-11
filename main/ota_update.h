@@ -18,6 +18,8 @@ extern "C" {
 #endif
 
 #define PICO_OTA_UPDATE_PATH "/sdcard/Pico-update.bin"
+/// fork 发布物文件名；与主名同时存在时主名优先。/ Fork release name; the primary name wins when both exist.
+#define PICO_OTA_UPDATE_ALT_PATH "/sdcard/Read_Pico.bin"
 
 typedef struct {
     char current_version[33];

@@ -49,8 +49,22 @@ static esp_err_t read_candidate(FILE *file, esp_image_header_t *header, esp_app_
     return ESP_OK;
 }
 
+// 升级包认两个名字：原厂契约名 Pico-update.bin（优先）与 fork 发布名 Read_Pico.bin。
+// 发布物下载下来就叫 Read_Pico.bin，以前必须手动改名才能装；这里直接兜底。
+// Two accepted package names: the factory contract name Pico-update.bin (preferred) and the
+// fork release name Read_Pico.bin. The download is named Read_Pico.bin, so the old flow forced
+// a manual rename; this resolves it instead.
+static const char *resolve_package(const char *path) {
+    if (!path || strcmp(path, PICO_OTA_UPDATE_PATH) != 0) return path;
+    struct stat probe = {0};
+    if (stat(path, &probe) == 0) return path;
+    if (stat(PICO_OTA_UPDATE_ALT_PATH, &probe) == 0) return PICO_OTA_UPDATE_ALT_PATH;
+    return path;
+}
+
 esp_err_t pico_ota_inspect(const char *path, pico_ota_info_t *info) {
     if (!path || !info) return ESP_ERR_INVALID_ARG;
+    path = resolve_package(path);
     memset(info, 0, sizeof(*info));
     const esp_app_desc_t *running_desc = esp_app_get_description();
     if (!copy_field(info->current_version, sizeof(info->current_version), running_desc->version,
@@ -58,7 +72,7 @@ esp_err_t pico_ota_inspect(const char *path, pico_ota_info_t *info) {
 
     struct stat file_stat = {0};
     if (stat(path, &file_stat) != 0) {
-        set_message(info->message, sizeof(info->message), "TF 卡根目录未找到固件升级包");
+        set_message(info->message, sizeof(info->message), "TF 卡根目录未找到升级包（Pico-update.bin / Read_Pico.bin）");
         return ESP_ERR_NOT_FOUND;
     }
     if (file_stat.st_size <= 0) {
@@ -117,6 +131,9 @@ esp_err_t pico_ota_inspect(const char *path, pico_ota_info_t *info) {
 
 esp_err_t pico_ota_install(const char *path, char *message, size_t message_size) {
     pico_ota_info_t info = {0};
+    // 与 inspect 用同一条解析结果，否则检查过的是 Read_Pico.bin、烧的却是另一个名字。
+    // Resolve once so inspect and the actual install open the same file.
+    path = resolve_package(path);
     esp_err_t err = pico_ota_inspect(path, &info);
     if (err != ESP_OK) {
         set_message(message, message_size, info.message);
