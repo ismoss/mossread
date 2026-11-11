@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "esp_heap_caps.h"
+#include "english_hyphen.h"
 #include "ttf_font.h"
 
 #define PAGE_MAX 4096u
@@ -519,6 +520,68 @@ static bool latin_member(uint32_t cp, uint32_t previous, size_t at, size_t n, si
     return size && latin_part(codepoint_value(s_text + at + n, size));
 }
 
+static size_t previous_codepoint_at(size_t at, size_t start) {
+    if (at > start) --at;
+    while (at > start && ((unsigned char)s_text[at] & 0xc0) == 0x80) --at;
+    return at;
+}
+
+// 只探查一个有界完整词：缩写、重音语言、带连接符的 token 不套英语断词规则（上游 rc105 同款）。
+// Probe one bounded whole ASCII word; acronyms, accented languages and joined tokens are left alone.
+static bool word_hyphen_points(size_t word, size_t limit, uint8_t *points) {
+    size_t start = word;
+    while (start && word - start <= ENGLISH_HYPHEN_MAX && latin_part((unsigned char)s_text[start - 1])) --start;
+    if (word - start > ENGLISH_HYPHEN_MAX) return false;
+    size_t at = start;
+    while (at < limit && at - start <= ENGLISH_HYPHEN_MAX) {
+        size_t n = codepoint_size(s_text + at, limit - at);
+        if (!n) return false;
+        uint32_t cp = codepoint_value(s_text + at, n);
+        if (!latin_member(cp, at > start ? (unsigned char)s_text[at - 1] : 0, at, n, limit)) break;
+        if (n != 1 || !((cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z'))) return false;
+        at += n;
+    }
+    if (at < word || at - start > ENGLISH_HYPHEN_MAX) return false;
+    uint8_t original[ENGLISH_HYPHEN_MAX + 1];
+    if (!english_hyphen_points(s_text + start, at - start, original)) return false;
+    memset(points, 0, ENGLISH_HYPHEN_MAX + 1);
+    memcpy(points, original + (word - start), at - word + 1);
+    return true;
+}
+
+// 词内部按 Liang 断点找最靠后、加上显示连字符仍放得下的位置；只用显示连字符，不改原文偏移。
+// Pick the last pattern-approved break inside the word that still fits once a display hyphen is
+// appended. The hyphen is display-only: source offsets and bookmarks are untouched.
+static bool hyphenate_prefix(size_t visible, size_t word, size_t end, int64_t width, size_t limit,
+                             int px, int available, size_t *cut_out, int64_t *width_out) {
+    uint8_t points[ENGLISH_HYPHEN_MAX + 1];
+    if (!word_hyphen_points(word, limit, points)) return false;
+    size_t cut = end;
+    int64_t advance = width;
+    while (cut > word) {
+        size_t previous = previous_codepoint_at(cut, visible);
+        // 连字符前至少留两个字，否则会出现一行只剩一两个音节的碎行。
+        // Keep at least two characters before the hyphen so a line never ends on a stub.
+        if (cut - word >= 3 && points[cut - word]) {
+            slot_select_for(previous);
+            int64_t fitted = advance + ttf_text_width_px(px, "-") + s_tracking_px;
+            if (fitted >= 0 && fitted <= available) {
+                if (!line_append(cut - visible, "-", 1)) return false;
+                *cut_out = cut;
+                *width_out = fitted;
+                return true;
+            }
+        }
+        char glyph[5];
+        size_t bytes = cut - previous;
+        memcpy(glyph, s_text + previous, bytes);
+        glyph[bytes] = 0;
+        advance -= ttf_text_width_px(px, glyph) + (previous > visible ? s_tracking_px : 0);
+        cut = previous;
+    }
+    return false;
+}
+
 static bool take_line(size_t off, int advance_limit, int hang_margin, size_t* next,
                       bool* paragraph_end, int* px, bool* heading,
                       int* line_width, int* indent, uint8_t* align,
@@ -615,11 +678,33 @@ static bool take_line(size_t off, int advance_limit, int hang_margin, size_t* ne
             // A Latin word that does not fit moves down whole; when the word itself is wider
             // than the line the rollback point is still the line start, so the old per-glyph
             // break stays as the last resort (otherwise the wrap would not advance).
-            if (!s_vertical && word && wrap_end > visible_off) {
-                end = wrap_end;
-                width = wrap_width;
-                s_line[end - visible_off] = 0;
-                break;
+            if (!s_vertical && !*heading && !*align && word) {
+                // 先试软连字符：能在词内找到一个合规断点，就不用把整个词推到下一行——
+                // 这既是"行尾大峡谷"的来源，也是长词腰斩的正解。
+                // Try a soft hyphen first: a pattern-approved break inside the word keeps the line
+                // full, which is what removes the end-of-line gap without cutting the word blindly.
+                size_t cut = 0;
+                int64_t cut_width = 0;
+                if (hyphenate_prefix(visible_off, wrap_end, end, width, limit, *px, available,
+                                     &cut, &cut_width)) {
+                    // 连字符已由 hyphenate_prefix 追加并终止，这里不能再写 s_line[cut] = 0，
+                    // 否则会把刚写进去的 '-' 抹掉（首版就栽在这）。
+                    // hyphenate_prefix already appended and terminated the display hyphen; do not
+                    // clear s_line[cut] here or it erases the '-' it just wrote.
+                    end = cut;
+                    width = cut_width;
+                    break;
+                }
+                // 词内没有合规断点（或加了连字符也放不下）才整词换行；整行就是这个词时
+                // 退回逐字硬断，否则折行不前进。
+                // No usable break inside the word: move the whole word down; when the line is the
+                // word itself, fall back to the per-glyph break so the wrap still advances.
+                if (wrap_end > visible_off) {
+                    end = wrap_end;
+                    width = wrap_width;
+                    s_line[end - visible_off] = 0;
+                    break;
+                }
             }
             // 优先让行尾正文对齐，再允许右标点小幅悬挂到留白；超出安全宽度才回退前一字。
             // Align the text edge first, hang a closing mark slightly into the margin, then roll back only if needed.

@@ -106,13 +106,14 @@ covers user-visible changes per release; volatile state lives in the untracked
 | TF 双文件名 | mod122 | TF 升级包同时认 `Pico-update.bin`（优先）与 `Read_Pico.bin`；install 与 inspect 共用一次解析 |
 | 电量慢节拍 | mod123 | 主循环 20 秒读一次 PMU 电池快照（只读 STATUS+QUICK，不 PEEK 事件）；签名不变不刷新 |
 | 内存探针 | mod124 | 开书/关书各记一次内部 SRAM；日志 `cycle`/`total` 两列，用来量"每本书吃多少且不还"（只观测，不改策略） |
+| 软连字符 | mod125 | 接入上游 Liang 断词表：词内优先断在有连字符处，`extra-ordi-nary`；显示用，不动原文偏移；标题/居中/竖排不参与 |
 | 品牌 | mod55 | 系统可见名统一为 **mossread**；开机画面换成 mossread 字标 + 内建图元画的星图；热点名 `mossread-XXXX` |
 | 状态与观感 | mod50、mod51 | 设置页网络状态实时刷新；回到锁屏整屏定稿（清掉密码圈圈残影） |
 | 锁屏收尾 | mod52–mod54 | GC16 收尾锁屏面、透明书封横屏适配；**圆点残影真因 = 锁屏图缓存里存过带键盘的帧**（mod53 魔数 +1 并解锁即删缓存），深睡保留锁屏画面；**mod54 修好自动锁屏被后台网络会话卡住**（5 分钟不熄屏的真因）|
 
 ## 进行中 / In flight
 
-- **上游 rc105 对齐**：见 `docs/UPSTREAM-ALIGN-rc105.md`。P0（账本）与 P1（西文按词断行）已随 mod121 发布，P2（TF 双文件名、电量慢节拍）已随 mod122/mod123 发布；剩余 P4（Liang 软连字符）、P5（TF 访问守卫）、P6（跟手滚动）、P7（阅读页缓存）待做。
+- **上游 rc105 对齐**：见 `docs/UPSTREAM-ALIGN-rc105.md`。P0（账本）与 P1（西文按词断行）已随 mod121 发布，P2（TF 双文件名、电量慢节拍）已随 mod122/mod123 发布；剩余 P5（TF 访问守卫）、P6（跟手滚动）、P7（阅读页缓存）待做。
 - mod121 已发版，等待真机验收（排版类改动必须真机肉眼）。
 
 ## 待做 / Planned
@@ -140,4 +141,4 @@ covers user-visible changes per release; volatile state lives in the untracked
 
 ## 验收状态 / Acceptance
 
-**mod1–mod124 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
+**mod1–mod125 全部为"真机验收 pending"**；每次发布只承诺"编译零告警 + CI 全绿 + 线上 feed 校验通过"。
