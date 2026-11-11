@@ -4666,6 +4666,29 @@ static void track_ticket_stats(app_ctx_t* ctx) {
     s_stats_last_ms = ctx->now_ms;
     if (s_stats_pending_ms >= 30000) flush_ticket_stats();
 }
+// 开书/关书内存探针：回答"每开一本书到底吃掉多少内部 SRAM、关掉之后还不还"。
+// 只在开书完成与关书结束时记一行，不改任何分配策略，也不保留额外缓冲。
+// Book open/close heap probe: how much internal SRAM one book eats and whether closing gives it
+// back. One line per event, no allocation-policy change and no extra buffer retained.
+// cycle 是本次开书到关书的净变化，total 是从本进程第一次开书算起的累计漂移；
+// 每开一本漏 1 KB 时，cycle 会稳定在 −1 KB 左右、total 随开书本数单调下降。
+// cycle is this open→close delta; total is the drift since the first book in this boot. A 1 KB
+// per-book leak shows up as a steady negative cycle and a monotonic total.
+static size_t s_probe_open_internal;
+static size_t s_probe_first_internal;
+static void heap_probe_open(void) {
+    s_probe_open_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    if (!s_probe_first_internal) s_probe_first_internal = s_probe_open_internal;
+}
+static void heap_probe_close(void) {
+    size_t now = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    ESP_LOGI(TAG, "heap close: internal=%uKB largest=%uKB psram=%uKB cycle=%+d B total=%+d B",
+             (unsigned)(now / 1024),
+             (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024),
+             (int)now - (int)s_probe_open_internal,
+             (int)now - (int)s_probe_first_internal);
+}
 static void free_book(void) {
     reader_font_recovery_reset();
     s_chapter_jump_undo.valid = false;
@@ -4708,6 +4731,7 @@ static void free_book(void) {
     s_reader_favorite = false;
     s_book_title[0] = 0;
     app_font_activate_system();
+    heap_probe_close();
 }
 // 通栏之后一页位图更大：装不下就按最大空闲块等比缩一档——图小一圈也胜过整页消失。
 // A full-bleed page bitmap is larger: when it does not fit, step the aspect-preserving size down
@@ -5150,6 +5174,7 @@ static bool open_book_impl(app_ctx_t* ctx, const char* path) {
     // again is the signal that it belongs there.
     if (shelf_hidden_load(s_path)) (void)shelf_hidden_save(s_path, false);
     ESP_LOGI(TAG, "opened kind=%d chapters=%u pages=%u px=%d", book_kind(), (unsigned)book_chapter_count(), (unsigned)book_layout_page_count(), s_px);
+    heap_probe_open();
     return true;
 }
 static bool open_book(app_ctx_t *ctx, const char *path) {
