@@ -179,7 +179,11 @@ int main(void) {
     const char mixed[] = "Wi甲iiW";
     assert(book_layout_build(mixed, strlen(mixed), r, 10));
     assert(book_layout_page_count() == 2);
-    assert(book_layout_page_start_offset(1) == 7);
+    // 西文按词断行（mod121）：装不下的西文词整词换行，"iiW" 一起落到下一页，
+    // 第 1 页起点因此从 7 变成 5。字节重建口径不变，见下面的 strcmp。
+    // Latin wraps by whole words (mod121): "iiW" moves down together, so page 1 starts at
+    // byte 5 instead of 7. The byte-exact rebuild invariant below is unchanged.
+    assert(book_layout_page_start_offset(1) == 5);
     drawn[0] = 0;
     book_layout_draw_page(&fb, 0, r, 10);
     book_layout_draw_page(&fb, 1, r, 10);
