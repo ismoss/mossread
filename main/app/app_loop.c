@@ -97,8 +97,15 @@
 // Retry the saved SD font shortly after a card appears or mounts.
 #define FONT_RETRY_INTERVAL_MS 750
 #define MEDIA_POLL_INTERVAL_MS 500
+// 状态栏电量自带的慢节拍。PMU 快照以前只有按键处理和 PMU 页会刷，书架/首页放着不动
+// 时百分比与充电状态一直是旧值；20 秒足够跟手，又不至于一直占 I2C。
+// Slow cadence for the header battery. The PMU snapshot used to be refreshed only by key
+// handling and the PMU page, so shelf/home kept a stale percentage and charge state; 20 s is
+// responsive enough without sitting on the I2C bus.
+#define POWER_POLL_INTERVAL_MS 20000
 
 static int64_t s_lock_ignore_until_ms;
+static int64_t s_power_poll_ms;
 extern const app_desc_t app_transfer;
 extern const app_desc_t app_book;
 
@@ -1230,10 +1237,17 @@ void app_loop_run(const app_loop_config_t* config) {
         if (ctx.user_activity) { last_input_ms = ctx.now_ms; ctx.user_activity = false; }
         // 充电插拔不属于用户输入，不打断锁屏/触摸或覆盖层，只更新已显示的状态栏。
         // Cable changes are not user input; update the drawn header alone without disturbing locks/touch/overlays.
-        if (!power_dialog_open && !s_quick.open && !quick_input_owned && !menu_open &&
+        const bool power_idle = !power_dialog_open && !s_quick.open && !quick_input_owned && !menu_open &&
             !current->holds_pmu && !usb_storage_active() && !touch.touched &&
-            !ui_click_feedback_active() && !ctx.request_app && !ctx.request_menu && !ctx.request_return &&
-            ui_nav_refresh_power(ctx.fb)) {
+            !ui_click_feedback_active() && !ctx.request_app && !ctx.request_menu && !ctx.request_return;
+        // 慢节拍先读电池快照，再让状态栏按签名决定要不要重画：签名不变就一次刷新都不发。
+        // The slow cadence refreshes the battery snapshot first; the header then repaints only if
+        // its signature actually changed.
+        if (power_idle && ctx.now_ms - s_power_poll_ms >= POWER_POLL_INTERVAL_MS) {
+            s_power_poll_ms = ctx.now_ms;
+            read_pico_pmu_poll_battery();
+        }
+        if (power_idle && ui_nav_refresh_power(ctx.fb)) {
             // 普通/水波纹保留状态栏灰阶边缘，快刷保持原黑白局刷。
             // Retain gray header edges in ordinary/water modes and short binary updates in fast mode.
             bool fast=app_settings_main_refresh_mode()==APP_MAIN_REFRESH_FAST;

@@ -719,6 +719,31 @@ esp_err_t read_pico_pmu_poll(void) {
     return refresh_core(false);
 }
 
+// 状态栏专用：只读电池两份快照，不 PEEK 事件、不读配置/时间/闹钟。
+// 事件在固件里是 PEEK 出来再消费的，重复 PEEK 会影响双击判定，所以这条路径绕开它。
+// Status-bar only: read the two battery snapshots and nothing else. Firmware PEEKs events and
+// consumes them elsewhere, so re-peeking on a timer would disturb double-click detection; this
+// path avoids the event registers entirely.
+esp_err_t read_pico_pmu_poll_battery(void) {
+    if (s_dev == NULL) return ESP_ERR_INVALID_STATE;
+    uint8_t status[PMU_STATUS_SIZE];
+    uint8_t quick[PMU_QUICK_BATTERY_SIZE];
+    bool st_ok = false;
+    for (int i = 0; i < 3 && !st_ok; ++i) {
+        if (i) vTaskDelay(pdMS_TO_TICKS(20));
+        if (pmu_read_reg(PMU_REG_STATUS, status, sizeof(status)) == ESP_OK) st_ok = parse_status(status);
+    }
+    if (!st_ok) return ESP_FAIL;  // 读不通就保持上一份快照，不把状态栏改成"未知"。
+    s_snap.present = true;
+    s_snap.status_ok = true;
+    // 先作废旧快照：QUICK 读失败或 CRC 不对时宁可回落到 STATUS 电压换算，也不显示陈旧百分比。
+    // Invalidate first: a failed or CRC-bad QUICK read falls back to the STATUS voltage instead
+    // of showing a stale percentage.
+    s_snap.quick_ok = false;
+    if (pmu_read_reg(PMU_REG_QUICK_BATTERY, quick, sizeof(quick)) == ESP_OK) parse_quick(quick);
+    return ESP_OK;
+}
+
 esp_err_t read_pico_pmu_init(i2c_master_bus_handle_t bus_handle, const read_pico_pmu_config_t* config) {
     memset(&s_snap, 0, sizeof(s_snap));
     memset(&s_soc_filter,0,sizeof(s_soc_filter));

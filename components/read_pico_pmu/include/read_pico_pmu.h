@@ -176,6 +176,12 @@ esp_err_t read_pico_pmu_refresh(void);
 /// 只刷新 STATUS / QUICK / 事件计数，给页面轮询用。
 /// / Refresh STATUS / QUICK / event count only, for page polls.
 esp_err_t read_pico_pmu_poll(void);
+/// 只刷新电量意图的 STATUS + QUICK 电池快照，不读事件、不碰配置与时钟。
+/// 给状态栏的慢节拍用：书架/首页放着不动时电量与充电状态也会跟手更新。
+/// / Refresh only the STATUS + QUICK battery snapshot for the status bar's slow cadence: it
+/// reads no events and touches no config or clock, so idle screens still track percentage and
+/// charge state.
+esp_err_t read_pico_pmu_poll_battery(void);
 
 esp_err_t read_pico_pmu_cmd(uint16_t code, const uint8_t* payload, uint8_t plen);
 /// 读出厂绑定的面板 VCOM。valid 则 *out_mv 为 500..2500，

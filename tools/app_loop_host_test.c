@@ -180,6 +180,7 @@ bool ui_avatar_quiesce(unsigned timeout_ms) {(void)timeout_ms;return true;}
 void ui_avatar_invalidate(void) {}
 void mod_monitor_tick(const uint8_t *fb) {(void)fb;}
 bool mod_monitor_inject(cst836u_touch_t *touch) {(void)touch;return false;}
+esp_err_t read_pico_pmu_poll_battery(void) {return ESP_OK;}
 bool ui_nav_refresh_power(uint8_t *fb) {(void)fb;return false;}
 EpdRect ui_nav_status_area(void) {return (EpdRect){0,0,684,76};}
 const EpdWaveform *display_main_gray_waveform(void) {return &E0470_WAVEFORM;}
