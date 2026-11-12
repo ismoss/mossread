@@ -4,7 +4,7 @@
 
 > **License note.** Upstream code through rc93 is Apache-2.0. Upstream original material first published from rc94 and explicitly marked carries a [personal-study license](licenses/kiikoread-Personal-Study-1.0.txt) (no commercial use). New files added by this fork are Apache-2.0, but **the combined firmware still contains upstream noncommercial material** — use it for personal study and personal devices only; do not sell it or ship it commercially. See [LICENSE](LICENSE) for the exact scope.
 
-**Current build:** live [update.json](https://ismoss.github.io/mossread/update.json) is authoritative (2026-11-05: `0.3.3-rc100-mod120`) · **Update feed:** `ismoss.github.io/mossread` · **Device:** 小纸 Pico RDP-G01-W (ESP32-S3 / 16 MB flash / 684×1216)
+**Current build:** live [update.json](https://ismoss.github.io/mossread/update.json) is authoritative (2026-11-11: `0.3.3-rc100-mod125`) · **Update feed:** `ismoss.github.io/mossread` · **Device:** 小纸 Pico RDP-G01-W (ESP32-S3 / 16 MB flash / 684×1216)
 
 [Install](#3-install-and-rollback) · [What changed](#4-what-this-mod-changes) · [Version line](#5-version-line) · [Build](#7-build-from-source) · [License & credit](#9-license-credit-and-boundaries) · [简体中文](README.zh-CN.md)
 
@@ -32,7 +32,7 @@ The mod focuses on four things:
 | Item | Upstream kiikoread | This mod |
 | :--- | :--- | :--- |
 | Baseline | `0.3.3-rc100` | Shared origin, then independent evolution (mod line) |
-| Version | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`, e.g. `0.3.3-rc100-mod120` |
+| Version | `X.Y.Z-rcN` | `X.Y.Z-rcN-modM`, e.g. `0.3.3-rc100-mod125` |
 | Updates | kiikoread.com / upstream GitHub Pages | Self-hosted `ismoss.github.io/mossread`; never follows upstream |
 | Support | Upstream issues / site | This repository; upstream does not support this firmware |
 | License | Apache-2.0 + personal-study from rc94 | Upstream terms preserved; new files here Apache-2.0 |
@@ -53,12 +53,14 @@ Upstream restructured the repository into a Pico + Metalio S31 two-board tree (`
 
 | Release | Upstream did | Our call |
 | :--- | :--- | :--- |
-| rc102 | Liquid-glass shelf, unconfigured default look, English TeX hyphenation + word spacing, TXT volume TOC/quick volume picker, image viewer actions | Glass shelf already ours (mod118); word spacing already in rc100; hyphenation and volumes only if needed |
+| rc102 | Liquid-glass shelf, unconfigured default look, English TeX hyphenation + word spacing, TXT volume TOC/quick volume picker, image viewer actions | Glass shelf already ours (mod118); word spacing already in rc100; **hyphenation taken in mod125** (word-boundary wrap in mod121); volumes not taken yet |
 | rc103 | Full-pixel GL16 turns, static WebP, full progressive JPEG, EPUB EOCD-trailer and EPUB3-spine compatibility, files management suite, first-run setup / UI language switch | WebP (mod84), progressive JPEG (mod85) and files management (mod88–93) are ours already; the two EPUB compatibility fixes are worth taking (small, no conflicts) |
 | rc104 | Shelf management aligned with Files, reader status/toolbar regression fixes, EPUB footnote popups, GIF first frame, JPEG decode fallback, double-tap image zoom, ripple erase/black re-drive, one-press deep-sleep resume | Shelf management and deep-sleep resume already ours; footnotes/GIF/JPEG fallback worth taking; ripple cleanup needs a device A/B |
 | rc105 | Built-in font coverage to 7668 chars (16-level supplements, per-glyph ink), Default-fullscreen setting, reading guide text/full-row, overlay reader chrome without repagination, exact-bounds partial refresh | Font coverage is the biggest win (logic +6 KB first, assets +469 KB later); Default fullscreen / guide are cheap; overlay reflow is risky |
 
 **Pulled into `mod119` → `mod120`**: 1) exact-bounds partial refresh, 2) the two EPUB open failures, 3) inline GIF first frame, 4) JPEG fallback, 5) missing-glyph fallback (mod119 logic plus mod120's PIF4 16-level supplement assets), 6) batched shelf progress, 7) turn phase cap 40→64, 8) the reading guide's follow-text / full-row switch.
+
+**Then `mod121` → `mod125`** (the rest of the rc105 reading line): word-boundary wrapping (mod121), Liang soft hyphens with upstream's pattern table (mod125), the TF package alias `Read_Pico.bin` (mod122), a 20 s battery-snapshot cadence (mod123) and an open/close internal-SRAM probe (mod124). Why the display/waveform, SD-guard, follow-scroll and page-cache items are *not* file-level pickups is recorded in [docs/UPSTREAM-ALIGN-rc105.md](docs/UPSTREAM-ALIGN-rc105.md).
 
 **Not done**: a Default-fullscreen switch — mossread already opens a book fullscreen, so the switch only makes sense alongside a standard-mode entry model; left for a separate change.
 
@@ -86,13 +88,13 @@ If the current system does not qualify, use the official web flasher to install 
 
 ### 3.2 From kiikoread (recommended)
 
-1. Open [update.json](https://ismoss.github.io/mossread/update.json) and read `version` and `url`; 2026-11-05: `0.3.3-rc100-mod120`.
+1. Open [update.json](https://ismoss.github.io/mossread/update.json) and read `version` and `url`; 2026-11-11: `0.3.3-rc100-mod125`.
 2. Download the matching `Pico-update-*.bin`, **rename it to `Pico-update.bin`**, and put it in the TF-card root.
 3. On the device: **Settings → Upgrade & restore → System update → TF-card update**, confirm, and wait for the write and reboot.
 4. After reboot, **Settings → Upgrade & restore → System update** should show the self-hosted feed; later checks can run over WiFi.
 
 Direct link to the current image:
-<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod120.bin>
+<https://ismoss.github.io/mossread/Pico-update-0.3.3-rc100-mod125.bin>
 
 > `Pico-update.bin` is the compatibility name expected by the upstream firmware; do not change it. Overwrite the same path for each update.
 
@@ -238,7 +240,7 @@ These are not new features; they are paths that looked fine but never actually w
 - The remote monitor is a LAN tool, off by default, with no public-internet authentication/encryption; do not port-forward it.
 - FAT16/FAT32 only; exFAT is not enabled, and a large card is not automatically compatible.
 - Inherited EPUB limits remain: 4 MB per XHTML resource, 8 MB per decompressed image, 8192 ZIP entries/chapters.
-- The full on-device walk-through for mod1–mod118 is still in progress; green CI is not a hardware acceptance for every item.
+- The full on-device walk-through for mod1–mod125 is still in progress; green CI is not a hardware acceptance for every item.
 
 ## 5. Version line
 
@@ -247,6 +249,7 @@ These are not new features; they are paths that looked fine but never actually w
 | Start | mod1–mod19 | Fork release line, version scheme, self-hosted OTA, dual-repo engineering rules; in-book landscape, chunked shelf scan + index, font system; DNS, known WiFi, first remote monitor, dual-mode transfer |
 | Network & monitor | mod20–mod26 | Real auto-switch fix, auto-connect switch, upgrade indicators, monitor image/scale/connection fixes |
 | Landscape lock, update chain & rebrand | mod27–mod64 | Monitor move + one-time RAM token, DNS router default, auto-connect inheritance, zero warnings; font root cause; landscape ticket/keypad/collage/wallpaper slots/transparent cover; wallpaper preview; transfer semantics; update rate/redirect/slow link; monitor PIN and touch expiry; GC16 lock settle; transparent-cover boot-cache guard; audit hardening (strict landscape enum, cover bounds, 90s manifest, disconnect hold); key evidence separates real power/deep-sleep wakes from OTA/reset boots; boot face is no longer duplicated before a direct passcode, and transparent-cover startup avoids the white badge flash |
+| Upstream alignment | mod119–mod125 | rc105 uptake (exact-bounds partial refresh, EPUB EOCD/spine, GIF first frame, JPEG fallback, glyph fallback, batched shelf progress, phase cap 64, full-row reading guide); word-boundary wrapping; Liang soft hyphens; TF package alias; 20 s battery cadence; open/close SRAM probe |
 | Direction, files & highlights | mod65–mod118 | Four turn modes, wallpaper direction/cover rotation; adaptive reading direction (four-way incl. 180°, absolute attitude, persisted lock, touch/gesture rotation); configurable reader gestures; power-key tap to turn; WebP + progressive JPEG; memory policy; deep-sleep single-press with the small lock face; file-management suite (sort / recursive search / book stats / list-grid / cross-page multi-select / batch delete / batch move); highlights (panel, underline, line capture, char-precise spans, tags, notes, Markdown export, press-drag select); Markdown reading and light rendering; minimal clock lock; liquid-glass shelf |
 
 - Per-release user-visible changes: [docs/CHANGELOG.md](docs/CHANGELOG.md)
@@ -260,7 +263,7 @@ These are not new features; they are paths that looked fine but never actually w
 | Build | GitHub Actions, ESP-IDF v6.1, board `sdkconfig.defaults` timing | Passing; zero warnings since mod30 |
 | Host regressions | Display/reader/lock/shelf/EPUB/settings/OTA TLS/DNS/monitor BMP suites | Passing on every push |
 | Published feed | Post-deploy check of update.json, image size, SHA-256 and live fetch | Passing on every dispatch |
-| On-device walk-through | Manual acceptance of mod1–mod118 | **In progress**; individual fixes marked hardware-confirmed in the changelog |
+| On-device walk-through | Manual acceptance of mod1–mod125 | **In progress**; individual fixes marked hardware-confirmed in the changelog |
 
 We try to keep “verified” and “merely compiled” separate. If an item has no hardware note, treat it as code/CI-level evidence, not a device promise.
 
@@ -271,7 +274,7 @@ Requires **ESP-IDF v6.1**, target ESP32-S3:
 ```sh
 python3 tools/prepare_tls_bundle.py "$IDF_PATH"
 idf.py set-target esp32s3
-PICO_PROJECT_VER=0.3.3-rc100-mod120 idf.py build
+PICO_PROJECT_VER=0.3.3-rc100-mod125 idf.py build
 ```
 
 - `sdkconfig.defaults` carries this board's flash/PSRAM timing; `sdkconfig.ci` is compile-only. Do not ship the CI timing as the product default.
